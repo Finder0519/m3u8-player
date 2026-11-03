@@ -16,14 +16,19 @@ jobs:
     name: '${{ matrix.platform }}'
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
+          # mac：GitHub 的 arm64 runner 无法打 DMG(hdiutil 受限)，只产出 zip 免安装包
           - os: macos-latest
             platform: mac
+            args: '--mac zip'
           - os: windows-latest
             platform: win
+            args: '--win'
           - os: ubuntu-latest
             platform: linux
+            args: '--linux'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -37,9 +42,11 @@ jobs:
         run: npm install
 
       - name: Build for ${{ matrix.platform }}
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --${{ matrix.platform }}
+          ARGS: ${{ matrix.args }}
+        run: npx electron-builder $ARGS
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
