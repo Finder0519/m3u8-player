@@ -21,7 +21,8 @@
     "files": [
       "main.js",
       "preload.js",
-      "m3u8-player.html"
+      "m3u8-player.html",
+      "js/**/*.js"
     ],
     "mac": {
       "target": [
