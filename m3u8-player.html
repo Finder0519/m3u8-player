@@ -1,0 +1,1588 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>M3U8 多线程播放器</title>
+<style>
+  :root {
+    --bg: #070a0f;
+    --card: #0f151e;
+    --card-2: #131b26;
+    --line: rgba(255, 255, 255, .07);
+    --text: #e8eef7;
+    --muted: #8492a6;
+    --accent: #22d3ee;
+    --accent-2: #6366f1;
+    --ok: #34d399;
+    --warn: #fbbf24;
+    --err: #f87171;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(1000px 600px at 12% -10%, rgba(34, 211, 238, .14), transparent 60%),
+      radial-gradient(900px 500px at 90% 0%, rgba(99, 102, 241, .15), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", "Microsoft YaHei", system-ui, sans-serif;
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .app { max-width: 1440px; margin: 0 auto; padding: 22px 24px 40px; }
+
+  /* ---------- 头部 ---------- */
+  .hero { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .mark {
+    width: 46px; height: 46px; border-radius: 13px;
+    display: grid; place-items: center;
+    font-size: 12px; font-weight: 800; letter-spacing: .5px;
+    color: #04141a;
+    background: linear-gradient(135deg, var(--accent), #7dd3fc 40%, var(--accent-2));
+    box-shadow: 0 8px 24px rgba(34, 211, 238, .28);
+  }
+  .brand h1 { margin: 0; font-size: 19px; font-weight: 650; letter-spacing: .2px; }
+  .brand p { margin: 3px 0 0; font-size: 12.5px; color: var(--muted); }
+  .engine {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 13px; border-radius: 999px;
+    border: 1px solid var(--line); background: rgba(255, 255, 255, .03);
+    font-size: 12.5px; color: var(--muted); white-space: nowrap;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
+  .dot.ok { background: var(--ok); box-shadow: 0 0 10px rgba(52, 211, 153, .8); }
+  .dot.err { background: var(--err); }
+
+  /* ---------- 地址栏 ---------- */
+  .source {
+    background: linear-gradient(180deg, rgba(255, 255, 255, .045), rgba(255, 255, 255, .015));
+    border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 14px; margin-bottom: 16px;
+  }
+  .field { display: flex; gap: 10px; }
+  .field input {
+    flex: 1; min-width: 0;
+    background: #070c13; color: var(--text);
+    border: 1px solid var(--line); border-radius: 10px;
+    padding: 11px 14px; font-size: 13.5px; font-family: inherit;
+    outline: none; transition: border-color .15s, box-shadow .15s;
+  }
+  .field input::placeholder { color: #55637a; }
+  .field input:focus { border-color: rgba(34, 211, 238, .55); box-shadow: 0 0 0 3px rgba(34, 211, 238, .1); }
+  button { font-family: inherit; cursor: pointer; border: none; }
+  .primary {
+    padding: 0 22px; border-radius: 10px; font-size: 13.5px; font-weight: 600; color: #04141a;
+    background: linear-gradient(135deg, var(--accent), #38bdf8);
+    box-shadow: 0 6px 18px rgba(34, 211, 238, .22);
+    transition: transform .1s, filter .15s;
+  }
+  .primary:hover { filter: brightness(1.06); }
+  .primary:active { transform: translateY(1px); }
+  .ghost {
+    padding: 0 16px; border-radius: 10px; font-size: 13px;
+    color: var(--muted); background: transparent; border: 1px solid var(--line);
+    transition: color .15s, border-color .15s;
+  }
+  .ghost:hover { color: var(--text); border-color: rgba(255, 255, 255, .2); }
+  .samples { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 11px; }
+  .samples .label { font-size: 12px; color: #5d6b80; }
+  .chip {
+    font-size: 12px; color: var(--muted);
+    padding: 5px 11px; border-radius: 999px;
+    background: rgba(255, 255, 255, .04); border: 1px solid var(--line);
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  .chip:hover { color: var(--accent); border-color: rgba(34, 211, 238, .45); background: rgba(34, 211, 238, .07); }
+
+  /* ---------- 主区域 ---------- */
+  .workspace { display: grid; grid-template-columns: minmax(0, 1fr) 372px; gap: 16px; align-items: start; }
+
+  .stage { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .video-wrap { position: relative; background: #000; aspect-ratio: 16 / 9; max-height: 68vh; }
+  video { width: 100%; height: 100%; display: block; background: #000; object-fit: contain; }
+  .overlay {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    background: radial-gradient(circle at 50% 45%, rgba(34, 211, 238, .07), transparent 55%), #05080c;
+    text-align: center; padding: 20px; transition: opacity .25s;
+  }
+  .overlay.hide { opacity: 0; pointer-events: none; }
+  .overlay .msg { font-size: 13.5px; color: #9fb0c6; max-width: 82%; line-height: 1.7; }
+  .overlay .msg b { color: var(--text); font-weight: 600; }
+  .spinner {
+    width: 34px; height: 34px; border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, .12);
+    border-top-color: var(--accent);
+    animation: spin .8s linear infinite;
+    display: none;
+  }
+  .spinner.on { display: block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .stage-bar {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 11px 14px; border-top: 1px solid var(--line); background: var(--card-2);
+  }
+  .qi { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+  select {
+    appearance: none; -webkit-appearance: none;
+    background: #070c13 url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M1 1l4 4 4-4' stroke='%238492a6' stroke-width='1.4' fill='none' stroke-linecap='round'/></svg>") no-repeat right 10px center;
+    color: var(--text); border: 1px solid var(--line); border-radius: 8px;
+    padding: 7px 30px 7px 11px; font-size: 12.5px; font-family: inherit; outline: none; cursor: pointer;
+    max-width: 240px;
+  }
+  .badges { display: flex; gap: 7px; flex-wrap: wrap; margin-left: auto; }
+  .badge {
+    font-size: 11.5px; color: #9fb0c6; padding: 4px 9px; border-radius: 7px;
+    background: rgba(255, 255, 255, .045); border: 1px solid var(--line);
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  .badge b { color: var(--accent); font-weight: 600; }
+  .badge.hl b { color: var(--ok); }
+
+  /* ---------- 右侧面板 ---------- */
+  .panel { display: flex; flex-direction: column; gap: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; }
+  .card-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    font-size: 12.5px; font-weight: 600; color: #c3d0e0; letter-spacing: .3px; margin-bottom: 12px;
+  }
+  .card-head .hint { font-size: 11px; font-weight: 400; color: #5d6b80; }
+  .mini {
+    font-size: 11px; color: var(--muted); background: transparent;
+    border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px;
+  }
+  .mini:hover { color: var(--text); }
+
+  .row { display: block; margin-bottom: 13px; }
+  .row:last-child { margin-bottom: 0; }
+  .row .top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; font-size: 12.5px; color: var(--muted); }
+  .row .top b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 4px; border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent) var(--p, 50%), rgba(255, 255, 255, .1) var(--p, 50%));
+    outline: none; margin: 0;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 15px; height: 15px; border-radius: 50%;
+    background: #e8f7fb; border: 3px solid #0f151e; box-shadow: 0 0 0 1px rgba(34, 211, 238, .8), 0 2px 8px rgba(0, 0, 0, .5);
+    cursor: pointer;
+  }
+  .switch { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; color: var(--muted); margin-top: 14px; }
+  .toggle { position: relative; width: 40px; height: 22px; border-radius: 999px; background: rgba(255, 255, 255, .12); transition: background .18s; flex: none; }
+  .toggle::after {
+    content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%;
+    background: #93a3b8; transition: transform .18s, background .18s;
+  }
+  .toggle.on { background: rgba(34, 211, 238, .35); }
+  .toggle.on::after { transform: translateX(18px); background: var(--accent); }
+
+  /* ---------- 网络代理 ---------- */
+  .proxy-type { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .proxy-type select { max-width: 140px; }
+  .p-status { font-size: 11.5px; margin-left: auto; color: var(--muted); }
+  .p-status.on { color: var(--ok); }
+  .p-status i { font-style: normal; font-size: 10px; display: block; margin-top: 2px; color: var(--muted); }
+  .card input[type=text], .card input[type=number], .card input[type=password], .card textarea {
+    width: 100%; background: #070c13; color: var(--text);
+    border: 1px solid var(--line); border-radius: 9px;
+    padding: 9px 12px; font-size: 13px; font-family: inherit; outline: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .card textarea { resize: vertical; min-height: 64px; line-height: 1.5; font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .card input:focus, .card textarea:focus { border-color: rgba(34, 211, 238, .55); box-shadow: 0 0 0 3px rgba(34, 211, 238, .1); }
+  .card input::placeholder, .card textarea::placeholder { color: #55637a; }
+  .proxy-grid { display: grid; grid-template-columns: 1fr 96px; gap: 10px; margin-bottom: 13px; }
+  .proxy-actions { display: flex; gap: 8px; margin-top: 12px; }
+  .proxy-actions .primary, .proxy-actions .ghost { height: 34px; flex: 1; font-size: 12.5px; }
+  .proxy-row-label { display: block; margin-bottom: 6px; font-size: 12px; color: var(--muted); }
+  .proxy-actions button:disabled { opacity: .4; cursor: not-allowed; }
+
+  .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+  .metric {
+    background: rgba(255, 255, 255, .028); border: 1px solid var(--line);
+    border-radius: 10px; padding: 9px 11px; min-width: 0;
+  }
+  .metric .k { display: block; font-size: 11px; color: #66758c; margin-bottom: 4px; }
+  .metric b { display: block; font-size: 16px; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -.2px; }
+  .metric i { display: block; font-size: 10.5px; color: #5d6b80; font-style: normal; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #spark { width: 100%; height: 54px; display: block; margin-top: 6px; border-radius: 8px; background: rgba(255, 255, 255, .02); }
+  .spark-head { display: flex; justify-content: space-between; font-size: 10.5px; color: #5d6b80; margin-top: 12px; }
+
+  .log-card { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .log { height: 168px; overflow-y: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; line-height: 1.65; }
+  .log::-webkit-scrollbar { width: 6px; }
+  .log::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .12); border-radius: 3px; }
+  .log-line { display: flex; gap: 8px; padding: 2px 0; color: #7e8ea5; }
+  .log-line .t { color: #445065; flex: none; }
+  .log-line .m { word-break: break-all; }
+  .log-line.ok .m { color: #6ee7b7; }
+  .log-line.warn .m { color: #f6c177; }
+  .log-line.err .m { color: #f9a3a3; }
+  .log-line.info .m { color: #93a4bd; }
+
+  .foot { margin-top: 16px; font-size: 11.5px; color: #4e5b6e; line-height: 1.8; }
+  .foot b { color: #6d7d93; font-weight: 500; }
+
+  @media (max-width: 1080px) {
+    .workspace { grid-template-columns: 1fr; }
+    .panel { display: grid; grid-template-columns: 1fr 1fr; }
+    .log-card { grid-column: 1 / -1; }
+  }
+  @media (max-width: 720px) {
+    .app { padding: 16px 14px 32px; }
+    .panel { grid-template-columns: 1fr; }
+    .field { flex-wrap: wrap; }
+    .field input { flex-basis: 100%; }
+    .primary, .ghost { height: 38px; flex: 1; }
+    .brand h1 { font-size: 16.5px; }
+    .engine { display: none; }
+    .badges { margin-left: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="hero">
+    <div class="brand">
+      <div class="mark">M3U8</div>
+      <div>
+        <h1>M3U8 多线程播放器</h1>
+        <p>并发拉取切片 · 预取缓存 · 实时带宽与命中统计</p>
+      </div>
+    </div>
+    <div class="engine"><span class="dot" id="engineDot"></span><span id="engineName">正在加载引擎…</span></div>
+  </header>
+
+  <section class="source">
+    <div class="field">
+      <input id="urlInput" type="url" spellcheck="false" autocomplete="off"
+             placeholder="粘贴 m3u8 地址，例如 https://example.com/live/index.m3u8" />
+      <button id="loadBtn" class="primary">加载播放</button>
+      <button id="stopBtn" class="ghost">停止</button>
+    </div>
+    <div class="samples">
+      <span class="label">示例：</span>
+      <button class="chip" data-url="https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8">Mux 多码率点播</button>
+      <button class="chip" data-url="https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tears-of-steel.ism/.m3u8">Tears of Steel（fMP4）</button>
+      <button class="chip" data-url="https://storage.googleapis.com/shaka-demo-assets/angel-one-hls/hls.m3u8">Angel One（多音轨 + 字幕）</button>
+    </div>
+  </section>
+
+  <main class="workspace">
+    <section class="stage">
+      <div class="video-wrap">
+        <video id="video" controls playsinline preload="none"></video>
+        <div class="overlay" id="overlay">
+          <div class="spinner" id="spinner"></div>
+          <div class="msg" id="overlayMsg">粘贴一个 <b>m3u8</b> 地址后点击「加载播放」<br />支持点播 / 直播 / 加密 / fMP4 流</div>
+        </div>
+      </div>
+      <div class="stage-bar">
+        <div class="qi"><span>画质</span><select id="quality"><option value="-1">自动</option></select></div>
+        <div class="badges">
+          <span class="badge">分辨率 <b id="bRes">-</b></span>
+          <span class="badge">码率 <b id="bRate">-</b></span>
+          <span class="badge">缓冲 <b id="bBuf">0.0s</b></span>
+          <span class="badge hl">命中 <b id="bHit">0%</b></span>
+        </div>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <div class="card">
+        <div class="card-head">下载设置 <span class="hint">立即生效</span></div>
+        <label class="row">
+          <span class="top"><span>并发线程数</span><b id="concVal">6</b></span>
+          <input id="concRange" type="range" min="1" max="16" step="1" value="6" />
+        </label>
+        <label class="row">
+          <span class="top"><span>预取数量（当前片段之后）</span><b id="aheadVal">4</b></span>
+          <input id="aheadRange" type="range" min="0" max="12" step="1" value="4" />
+        </label>
+        <label class="row">
+          <span class="top"><span>缓存上限</span><b id="cacheVal">200 MB</b></span>
+          <input id="cacheRange" type="range" min="40" max="1000" step="20" value="200" />
+        </label>
+        <div class="switch">
+          <span>启用预取缓存</span>
+          <button class="toggle on" id="prefetchToggle" aria-label="启用预取缓存"></button>
+        </div>
+      </div>
+
+      <div class="card" id="proxyCard">
+        <div class="card-head">网络代理 <span class="hint" id="proxyHint">仅桌面版可用</span></div>
+        <div class="proxy-type">
+          <select id="proxyType">
+            <option value="http" selected>HTTP</option>
+            <option value="socks5">SOCKS5</option>
+          </select>
+          <span class="p-status" id="proxyStatus">已关闭</span>
+        </div>
+        <div class="proxy-grid">
+          <div>
+            <label class="proxy-row-label" for="proxyHost">主机</label>
+            <input id="proxyHost" type="text" value="127.0.0.1" placeholder="127.0.0.1 或 example.com" />
+          </div>
+          <div>
+            <label class="proxy-row-label" for="proxyPort">端口</label>
+            <input id="proxyPort" type="number" min="0" max="65535" value="7890" placeholder="7890" />
+          </div>
+        </div>
+        <div class="proxy-grid">
+          <div>
+            <label class="proxy-row-label" for="proxyUser">用户名（可选）</label>
+            <input id="proxyUser" type="text" placeholder="留空表示无鉴权" />
+          </div>
+          <div>
+            <label class="proxy-row-label" for="proxyPass">密码（可选）</label>
+            <input id="proxyPass" type="password" placeholder="••••••" />
+          </div>
+        </div>
+        <div class="proxy-actions">
+          <button id="proxyApply" class="primary">应用代理</button>
+          <button id="proxyClear" class="ghost">关闭代理</button>
+        </div>
+      </div>
+
+      <div class="card" id="uaCard">
+        <div class="card-head">浏览器 UA <span class="hint" id="uaHint">默认模仿 Windows Chrome</span></div>
+        <div class="switch">
+          <span>启用自定义 UA</span>
+          <button class="toggle" id="uaToggle" aria-label="启用自定义 UA"></button>
+        </div>
+        <label class="proxy-row-label" for="uaInput">User-Agent（所有请求都会带上这个）</label>
+        <textarea id="uaInput" spellcheck="false">Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36</textarea>
+        <div class="proxy-actions">
+          <button id="uaApply" class="primary">应用 UA</button>
+          <button id="uaReset" class="ghost">恢复默认</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">实时数据 <span class="hint" id="liveHint">等待播放</span></div>
+        <div class="metrics">
+          <div class="metric"><span class="k">已下载切片</span><b id="mDownloaded">0</b><i id="mBytes">0 B</i></div>
+          <div class="metric"><span class="k">缓存命中率</span><b id="mHit">0%</b><i id="mHitDetail">0 / 0</i></div>
+          <div class="metric"><span class="k">实时速度</span><b id="mSpeed">0 B/s</b><i id="mBw">—</i></div>
+          <div class="metric"><span class="k">缓存占用</span><b id="mCache">0 B</b><i id="mItems">0 条</i></div>
+          <div class="metric"><span class="k">活动线程</span><b id="mActive">0</b><i id="mQueue">队列 0 · 峰值 0</i></div>
+          <div class="metric"><span class="k">预取 / 失败</span><b id="mPrefetch">0 / 0</b><i>预取片数 / 失败请求</i></div>
+        </div>
+        <div class="spark-head"><span>下载速度曲线</span><span>近 15 秒</span></div>
+        <canvas id="spark" height="54"></canvas>
+      </div>
+
+      <div class="card log-card">
+        <div class="card-head">事件日志 <button class="mini" id="clearLog">清空</button></div>
+        <div class="log" id="log"></div>
+      </div>
+    </aside>
+  </main>
+
+  <p class="foot">
+    <b>说明：</b>切片并发下载由浏览器连接池执行，线程数即同时在途的 HTTP 请求数；预取缓存把后续切片提前下好，播放器取片段时直接命中内存，从而显著加快起播与拖拽后的缓冲。<br />
+    跨域流需要目标服务器返回 <b>Access-Control-Allow-Origin</b>，仅支持 http/https 地址；Safari 无 hls.js 时自动回退原生 HLS（此时无并发统计）。
+  </p>
+</div>
+
+<script>
+/* ============================================================
+   引擎加载（多 CDN 回退）
+   ============================================================ */
+const HLS_CDNS = [
+  'https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js',
+  'https://unpkg.com/hls.js@1.5.17/dist/hls.min.js',
+  'https://cdn.jsdelivr.net/npm/hls.js@1.4.12/dist/hls.min.js'
+];
+const engineDot = document.getElementById('engineDot');
+const engineName = document.getElementById('engineName');
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('加载失败: ' + src));
+    document.head.appendChild(s);
+  });
+}
+
+async function initEngine() {
+  for (const src of HLS_CDNS) {
+    try {
+      await loadScript(src);
+      if (window.Hls) {
+        engineDot.className = 'dot ok';
+        engineName.textContent = 'hls.js ' + (window.Hls.version || '');
+        return true;
+      }
+    } catch (e) { /* 尝试下一个 */ }
+  }
+  // 原生 HLS 回退（Safari / iOS）
+  const v = document.getElementById('video');
+  if (v.canPlayType('application/vnd.apple.mpegurl')) {
+    engineDot.className = 'dot ok';
+    engineName.textContent = '原生 HLS（无并发统计）';
+    window.__nativeHls = true;
+    return true;
+  }
+  engineDot.className = 'dot err';
+  engineName.textContent = '引擎不可用';
+  setOverlay('引擎加载失败：无法获取 hls.js，且当前浏览器不支持原生 HLS。<br />请检查网络后刷新页面。', false);
+  return false;
+}
+
+/* ============================================================
+   全局状态
+   ============================================================ */
+const S = {
+  hls: null,
+  concurrency: 6,
+  prefetchAhead: 4,
+  cacheLimitMB: 200,
+  prefetchEnabled: true,
+
+  queue: [],          // 待下载任务
+  running: new Map(), // key -> task
+  inflight: new Map(),// key -> promise（去重）
+  cache: new Map(),   // key -> { data, size }
+  cacheBytes: 0,
+  active: 0,
+
+  net: {
+    downloads: 0, bytes: 0, errors: 0, prefetched: 0,
+    playerReqs: 0, hits: 0, activePeak: 0, bwEwma: 0
+  },
+  speed: { bytes: 0, ts: performance.now(), current: 0 },
+  spark: [],
+  playing: false,
+  currentUrl: '',
+  manifestRetry: 0,
+  netRetry: 0,
+  retryTimer: null
+};
+
+const ABORT = Symbol('abort');
+const now = () => performance.now();
+const $ = (id) => document.getElementById(id);
+
+/* 调试探针：地址加 ?debug=1 后可用 window.__dbg() 查看 */
+const DEBUG = /[?&]debug=1/.test(location.search);
+const DBG = [];
+function dbg(...args) {
+  if (!DEBUG) return;
+  const line = args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
+  DBG.push(new Date().toISOString().slice(11, 23) + ' ' + line);
+  if (DBG.length > 400) DBG.shift();
+  console.log('[m3u8] ' + line);
+}
+window.__dbg = () => DBG.slice();
+
+/* ============================================================
+   基础工具
+   ============================================================ */
+function fmtBytes(n) {
+  if (!n) return '0 B';
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+  if (n < 1073741824) return (n / 1048576).toFixed(1) + ' MB';
+  return (n / 1073741824).toFixed(2) + ' GB';
+}
+function fmtSpeed(bps) { return fmtBytes(bps) + '/s'; }
+
+function log(msg, kind = 'info') {
+  const box = $('log');
+  const line = document.createElement('div');
+  line.className = 'log-line ' + kind;
+  const t = document.createElement('span');
+  t.className = 't';
+  t.textContent = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+  const m = document.createElement('span');
+  m.className = 'm';
+  m.textContent = msg;
+  line.append(t, m);
+  box.prepend(line);
+  while (box.children.length > 120) box.lastChild.remove();
+}
+
+function setOverlay(html, spinning) {
+  $('overlayMsg').innerHTML = html;
+  $('spinner').classList.toggle('on', !!spinning);
+  $('overlay').classList.remove('hide');
+}
+function hideOverlay() { $('overlay').classList.add('hide'); $('spinner').classList.remove('on'); }
+
+/* ============================================================
+   切片缓存（LRU + 容量上限）
+   ============================================================ */
+function cacheKey(url, start, end) {
+  return (start !== undefined && start !== null && end !== undefined && end !== null)
+    ? url + '|' + start + '-' + end
+    : url;
+}
+
+/** hls.js 的 LoaderContext 默认把 rangeStart/rangeEnd 置为 0，只有 rangeEnd>0 才是真正的分段请求 */
+function normRange(start, end) {
+  if (typeof end === 'number' && isFinite(end) && end > 0) {
+    return {
+      start: typeof start === 'number' && isFinite(start) ? start : 0,
+      end
+    };
+  }
+  return { start: null, end: null };
+}
+
+function getCached(key) {
+  const item = S.cache.get(key);
+  if (!item) return null;
+  S.cache.delete(key);
+  S.cache.set(key, item); // 移到队尾（最近使用）
+  return item.data;
+}
+
+function putCache(key, data) {
+  if (S.cache.has(key)) return;
+  if (data.byteLength > S.cacheLimitMB * 1024 * 1024) return; // 单块超过上限则不缓存
+  S.cache.set(key, { data, size: data.byteLength });
+  S.cacheBytes += data.byteLength;
+  trimCache();
+}
+
+function trimCache() {
+  const limit = S.cacheLimitMB * 1024 * 1024;
+  if (S.cacheBytes <= limit) return;
+  for (const key of Array.from(S.cache.keys())) {
+    if (S.cacheBytes <= limit) break;
+    if (S.inflight.has(key) || S.running.has(key)) continue;
+    const item = S.cache.get(key);
+    if (!item) continue;
+    S.cache.delete(key);
+    S.cacheBytes -= item.size;
+  }
+}
+
+function clearCache() {
+  S.cache.clear();
+  S.cacheBytes = 0;
+}
+
+/* ============================================================
+   并发下载调度器
+   ============================================================ */
+function pump() {
+  while (S.active < S.concurrency && S.queue.length > 0) {
+    runTask(S.queue.shift());
+  }
+}
+
+function enqueue(task) {
+  // priority: 0 = 播放器请求（插队），2 = 预取（排队尾）
+  if (task.priority === 0) {
+    const i = S.queue.findIndex((t) => t.priority > 0);
+    if (i === -1) S.queue.push(task);
+    else S.queue.splice(i, 0, task);
+  } else {
+    S.queue.push(task);
+  }
+}
+
+function recordBandwidth(bytes, ms) {
+  if (!bytes || ms <= 0) return;
+  const bps = (bytes * 8 * 1000) / ms;
+  S.net.bwEwma = S.net.bwEwma ? S.net.bwEwma * 0.7 + bps * 0.3 : bps;
+}
+
+async function runTask(task) {
+  S.active++;
+  S.net.activePeak = Math.max(S.net.activePeak, S.active);
+  S.running.set(task.key, task);
+  const t0 = now();
+  let tFirst = t0;
+  dbg('task:start', task.origin, task.url, task.rangeStart, task.rangeEnd);
+
+  try {
+    const headers = Object.assign({}, task.headers || {});
+    const hasRange = task.rangeEnd !== null && task.rangeEnd !== undefined && task.rangeEnd > 0;
+    if (hasRange) headers.Range = 'bytes=' + task.rangeStart + '-' + (task.rangeEnd - 1);
+
+    const res = await fetch(task.url, {
+      signal: task.ctrl.signal,
+      headers,
+      mode: 'cors',
+      credentials: 'omit',
+      cache: 'default'
+    });
+    tFirst = now();
+    dbg('task:response', task.url, res.status, res.type);
+    if (!res.ok && res.status !== 206) throw httpError(res);
+    let buf = await res.arrayBuffer();
+
+    // 服务端不支持 Range 时返回 200 全量，这里按范围裁剪
+    if (hasRange && res.status === 200 && buf.byteLength >= task.rangeEnd) {
+      buf = buf.slice(task.rangeStart, task.rangeEnd);
+    }
+
+    const t1 = now();
+    recordBandwidth(buf.byteLength, t1 - tFirst);
+    S.net.downloads++;
+    S.net.bytes += buf.byteLength;
+    if (task.origin === 'prefetch') S.net.prefetched++;
+    putCache(task.key, buf);
+    dbg('task:done', task.url, buf.byteLength, Math.round(t1 - t0) + 'ms');
+    task.resolve({ data: buf, fromCache: false, t0, tFirst, t1, bytes: buf.byteLength });
+  } catch (err) {
+    dbg('task:error', task.url, (err && err.message) || String(err));
+    if (err && err.name === 'AbortError') {
+      task.reject(ABORT);
+    } else {
+      S.net.errors++;
+      task.reject(err);
+    }
+  } finally {
+    S.running.delete(task.key);
+    S.inflight.delete(task.key);
+    S.active--;
+    pump();
+  }
+}
+
+/**
+ * 请求一个切片。命中内存缓存立即返回；同一 URL 在途请求自动合并。
+ * @returns {{promise: Promise, fromCache: boolean, deduped: boolean}}
+ */
+function requestSegment({ url, rangeStart, rangeEnd, priority = 2, origin = 'prefetch', headers = null }) {
+  const key = cacheKey(url, rangeStart, rangeEnd);
+
+  const cached = getCached(key);
+  if (cached) {
+    return { promise: Promise.resolve({ data: cached, fromCache: true, t0: now(), tFirst: now(), t1: now(), bytes: cached.byteLength }), fromCache: true, deduped: false };
+  }
+
+  const pending = S.inflight.get(key);
+  if (pending) {
+    return { promise: pending, fromCache: false, deduped: true };
+  }
+
+  let resolve, reject;
+  const promise = new Promise((rs, rj) => { resolve = rs; reject = rj; });
+  const task = {
+    key, url, rangeStart, rangeEnd, priority, origin, headers,
+    ctrl: new AbortController(), resolve, reject
+  };
+  S.inflight.set(key, promise);
+  enqueue(task);
+  pump();
+  return { promise, fromCache: false, deduped: false };
+}
+
+/* ============================================================
+   预取：把当前片段之后的 N 个切片提前下好
+   ============================================================ */
+function schedulePrefetch(frag) {
+  if (!S.prefetchEnabled || S.prefetchAhead <= 0) return;
+  const hls = S.hls;
+  if (!hls || !frag || frag.part) return;
+  if (S.queue.length > 40) return;
+
+  let list = null, idx = -1, levelIdx = -1;
+  const levels = hls.levels || [];
+  for (let li = 0; li < levels.length; li++) {
+    const d = levels[li].details;
+    if (d && d.fragments && d.fragments.length) {
+      const i = d.fragments.indexOf(frag);
+      if (i !== -1) { list = d.fragments; idx = i; levelIdx = li; break; }
+    }
+  }
+  if (!list || idx < 0) return;
+  // 只预取当前生效的档位，避免切换码率时白白下载另一个档位的切片
+  if (hls.loadLevel !== levelIdx && hls.currentLevel !== levelIdx) return;
+
+  for (let k = 1; k <= S.prefetchAhead; k++) {
+    const f = list[idx + k];
+    if (!f || !f.url || f.part) break;
+    const rg = normRange(f.byteRangeStartOffset, f.byteRangeEndOffset);
+    const key = cacheKey(f.url, rg.start, rg.end);
+    if (S.cache.has(key) || S.inflight.has(key)) continue;
+    requestSegment({
+      url: f.url,
+      rangeStart: rg.start,
+      rangeEnd: rg.end,
+      priority: 2,
+      origin: 'prefetch'
+    }).promise.catch(() => {});
+  }
+}
+
+/* ============================================================
+   自定义 Loader：接管 hls.js 的网络层
+   ============================================================ */
+function createStats() {
+  const t = now();
+  return {
+    aborted: false, loaded: 0, retry: 0, total: 0, chunkCount: 0, bwEstimate: 0,
+    trequest: t, tfirst: 0, tload: 0,
+    loading: { start: t, first: 0, end: 0, total: 0 },
+    parsing: { start: 0, end: 0 },
+    buffering: { start: 0, end: 0, first: 0, total: 0 }
+  };
+}
+
+/** 用真实（或折算）下载时序填充 hls.js 的 stats，保证 ABR 估算合理 */
+function fillStats(stats, meta) {
+  const len = meta.data ? meta.data.byteLength : 0;
+  stats.loaded = len;
+  stats.total = Math.max(len, meta.bytes || 0);
+  stats.chunkCount = 1;
+
+  if (meta.fromCache) {
+    // 命中缓存：按实测带宽折算一个等效耗时，避免 ABR 误判为无限带宽
+    const bw = S.net.bwEwma || 4000000;
+    const synth = Math.max(1, (len * 8 * 1000) / bw);
+    stats.trequest = meta.t1 - synth;
+    stats.tfirst = stats.trequest;
+    stats.tload = meta.t1;
+    stats.bwEstimate = bw;
+  } else {
+    stats.trequest = meta.t0;
+    stats.tfirst = meta.tFirst || meta.t0;
+    stats.tload = meta.t1;
+    stats.bwEstimate = S.net.bwEwma;
+  }
+  stats.loading.start = stats.trequest;
+  stats.loading.first = stats.tfirst;
+  stats.loading.end = stats.tload;
+}
+
+/** 把 fetch 异常整理成 hls.js 的 { code, text }：code 必须是真实 HTTP 状态，
+ *  否则 hls.js 会把自定义码渲染成 "A network error (status 1)" 这类误导性文案 */
+function netErrorPayload(err) {
+  const status = err && err.status ? err.status : 0;
+  const raw = (err && err.message) || String(err || '网络错误');
+  return { code: status, text: raw };
+}
+
+function httpError(res) {
+  const err = new Error('HTTP ' + res.status + (res.statusText ? ' ' + res.statusText : ''));
+  err.status = res.status;
+  return err;
+}
+
+/** 根据失败原因给出可操作的建议 */
+function hintFor(reason, diag) {
+  if (/\b(401|403)\b/.test(reason)) return '链接可能已过期或需要鉴权、防盗链：请重新复制最新的播放地址再试。';
+  if (/\b404\b/.test(reason)) return '地址不存在：确认频道是否已下线、路径是否完整。';
+  if (/Failed to fetch|NetworkError|Load failed|拦截|跨域/i.test(reason)) {
+    if (diag === 'cors') return '服务器可以访问，但没有返回 Access-Control-Allow-Origin，被浏览器的跨域策略拦下了。另需确认该地址不是限时授权链接（令牌过期常表现为同样的报错）。';
+    if (diag === 'unreachable') return '请求没有到达服务器：请检查网络、DNS 或该域名是否可访问（也可能被代理 / 防火墙拦截）。';
+    return '浏览器未能拿到响应。常见原因：① 服务器未返回 Access-Control-Allow-Origin；② 限时授权链接的令牌已过期；③ DNS / 证书 / 网络中断。';
+  }
+  if (/timeout/i.test(reason)) return '请求超时：服务器响应过慢，可稍后重试或换用更近的节点。';
+  return '请检查网络连通性与地址是否有效。';
+}
+
+/** 用 no-cors 探测一次：能发出（opaque）说明服务器可达，失败说明网络层就不通 */
+function probeReachability(url) {
+  return new Promise((resolve) => {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => { ctrl.abort(); resolve('timeout'); }, 5000);
+    fetch(url, { mode: 'no-cors', cache: 'no-store', signal: ctrl.signal })
+      .then(() => { clearTimeout(t); resolve('cors'); })
+      .catch(() => { clearTimeout(t); resolve('unreachable'); });
+  });
+}
+
+/** 原地重置 stats：hls.js 会把 loader.stats 挂到 frag.stats，替换对象会读到旧值 */
+function resetStats(stats) {
+  Object.assign(stats, createStats());
+  return stats;
+}
+
+class PrefetchLoader {
+  constructor(config) {
+    this.config = config || {};
+    // hls.js 会把 loader.stats 挂到 frag.stats 上，因此构造时就要有值
+    this.stats = createStats();
+    this.context = null;
+    this.callbacks = null;
+    this.ctrl = null;
+    this.settled = true;
+    this.destroyed = false;
+  }
+
+  destroy() {
+    this.destroyed = true;
+    this.abort();
+  }
+
+  /** hls.js 在切档 / 缓冲刷新 / 关闭时会调用；必须回调 onAbort 让内部状态复位 */
+  abort() {
+    if (this.settled) return;
+    const stats = this.stats;
+    const context = this.context;
+    const callbacks = this.callbacks;
+    this.settled = true;
+    const ctrl = this.ctrl;
+    this.ctrl = null;
+    if (ctrl && this._abortOnDemand) ctrl.abort(); // 仅 LL-HLS part 需要真正取消请求
+    if (callbacks && callbacks.onAbort) callbacks.onAbort(stats, context, null);
+  }
+
+  load(context, config, callbacks) {
+    const type = context.type;
+    dbg('load', type || 'frag?', context.url || (context.frag && context.frag.url), !!context.part);
+    this.context = context;
+    this.callbacks = callbacks;
+    resetStats(this.stats);
+    this.settled = false;
+    this.ctrl = new AbortController();
+    this._abortOnDemand = false;
+
+    if (type === 'manifest' || type === 'level' || type === 'audioTrack' || type === 'subtitleTrack') {
+      return this._loadPlaylist(context, config, callbacks);
+    }
+    if (context.frag) {
+      return this._loadFragment(context, config, callbacks);
+    }
+    return this._loadBinary(context, config, callbacks);
+  }
+
+  _done() {
+    this.settled = true;
+    this.ctrl = null;
+  }
+
+  /* ---- 播放列表（m3u8 文本）：不做缓存，始终取最新 ---- */
+  _loadPlaylist(context, config, callbacks) {
+    const url = context.url;
+    const stats = this.stats;
+    const ctrl = this.ctrl;
+    const timeout = (context.type === 'manifest' ? config.manifestLoadingTimeOut : config.levelLoadingTimeOut) || 20000;
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      if (this.settled) return;
+      timedOut = true;
+      this._done();
+      stats.aborted = true;
+      if (callbacks.onTimeout) callbacks.onTimeout(stats, context, null);
+      ctrl.abort();
+    }, Math.min(timeout, 45000));
+
+    fetch(url, { signal: ctrl.signal, mode: 'cors', credentials: 'omit', cache: 'no-store', headers: context.headers || {} })
+      .then((res) => {
+        if (!res.ok) throw httpError(res);
+        stats.tfirst = now();
+        return res.text();
+      })
+      .then((text) => {
+        if (timedOut || this.settled) return;
+        clearTimeout(timer);
+        this._done();
+        stats.tload = now();
+        stats.loaded = text.length;
+        stats.total = text.length;
+        stats.chunkCount = 1;
+        stats.loading.first = stats.tfirst;
+        stats.loading.end = stats.tload;
+        stats.bwEstimate = S.net.bwEwma;
+        callbacks.onSuccess({ url, data: text }, stats, context, null);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        if (timedOut) return;
+        if (err && err.name === 'AbortError') {
+          if (!this.settled) { this._done(); stats.aborted = true; if (callbacks.onAbort) callbacks.onAbort(stats, context, null); }
+          return;
+        }
+        this._done();
+        callbacks.onError(netErrorPayload(err), context, null, stats);
+      });
+  }
+
+  /* ---- 普通二进制请求（如解密密钥） ---- */
+  _loadBinary(context, config, callbacks) {
+    const url = context.url;
+    const stats = this.stats;
+    const ctrl = this.ctrl;
+
+    fetch(url, { signal: ctrl.signal, mode: 'cors', credentials: 'omit', headers: context.headers || {} })
+      .then((res) => {
+        if (!res.ok) throw httpError(res);
+        stats.tfirst = now();
+        return res.arrayBuffer();
+      })
+      .then((buf) => {
+        if (this.settled) return;
+        this._done();
+        stats.tload = now();
+        stats.loaded = buf.byteLength;
+        stats.total = buf.byteLength;
+        stats.chunkCount = 1;
+        stats.loading.first = stats.tfirst;
+        stats.loading.end = stats.tload;
+        stats.bwEstimate = S.net.bwEwma;
+        callbacks.onSuccess({ url, data: buf }, stats, context, null);
+      })
+      .catch((err) => {
+        if (err && err.name === 'AbortError') {
+          if (!this.settled) { this._done(); stats.aborted = true; if (callbacks.onAbort) callbacks.onAbort(stats, context, null); }
+          return;
+        }
+        this._done();
+        callbacks.onError(netErrorPayload(err), context, null, stats);
+      });
+  }
+
+  /* ---- 视频切片：走并发调度 + 预取缓存 ---- */
+  _loadFragment(context, config, callbacks) {
+    const frag = context.frag;
+    const url = context.url || (frag && frag.url);
+    const range = normRange(context.rangeStart, context.rangeEnd);
+    const rangeStart = range.start;
+    const rangeEnd = range.end;
+    const headers = context.headers || null;
+    const isPart = !!context.part; // LL-HLS 部分片段不缓存
+
+    const stats = this.stats;
+    const ctrl = this.ctrl;
+    S.net.playerReqs++;
+
+    const timer = setTimeout(() => {
+      if (this.settled) return;
+      this._done();
+      stats.aborted = true;
+      if (callbacks.onTimeout) callbacks.onTimeout(stats, context, null);
+    }, Math.min(Math.max(config.fragLoadingTimeOut || 30000, 15000), 60000));
+
+    const finish = () => {
+      clearTimeout(timer);
+      this._done();
+    };
+
+    // 1) 同步命中缓存（必须交出副本：hls.js 的 worker 会 transfer 并 detach 原 buffer）
+    if (!isPart) {
+      const cached = getCached(cacheKey(url, rangeStart, rangeEnd));
+      if (cached) {
+        S.net.hits++;
+        const copy = cached.slice(0);
+        if (frag) frag.__bytes = copy.byteLength;
+        fillStats(stats, { data: copy, fromCache: true, t0: now(), tFirst: now(), t1: now(), bytes: copy.byteLength });
+        Promise.resolve().then(() => {
+          if (this.settled) return;
+          finish();
+          callbacks.onSuccess({ url, data: copy }, stats, context, null);
+          schedulePrefetch(frag);
+        });
+        return;
+      }
+    }
+
+    // 2) 交给并发调度器
+    let req;
+    if (isPart) {
+      // LL-HLS part：不缓存、不去重，随 abort 一起取消
+      this._abortOnDemand = true;
+      let resolve, reject;
+      const p = new Promise((rs, rj) => { resolve = rs; reject = rj; });
+      const t0 = now();
+      fetch(url, { signal: ctrl.signal, mode: 'cors', credentials: 'omit', headers: headers || {} })
+        .then((res) => {
+          if (!res.ok) throw httpError(res);
+          return res.arrayBuffer();
+        })
+        .then((buf) => resolve({ data: buf, fromCache: false, t0, tFirst: now(), t1: now(), bytes: buf.byteLength }))
+        .catch(reject);
+      req = { promise: p, fromCache: false, deduped: false };
+    } else {
+      req = requestSegment({ url, rangeStart, rangeEnd, priority: 0, origin: 'player', headers });
+    }
+
+    if (req.fromCache || req.deduped) S.net.hits++;
+
+    req.promise
+      .then((meta) => {
+        if (this.settled) { dbg('frag:late', url); return; }
+        finish();
+        fillStats(stats, meta);
+        // 交给 hls.js 的 buffer 必须是独立副本，否则 worker transfer 会 detach 缓存里的原始数据
+        const data = isPart ? meta.data : meta.data.slice(0);
+        if (frag) frag.__bytes = data.byteLength;
+        dbg('frag:ok', url, data && data.byteLength);
+        callbacks.onSuccess({ url, data }, stats, context, null);
+        schedulePrefetch(frag);
+      })
+      .catch((err) => {
+        if (this.settled) { dbg('frag:late-err', url); return; }
+        finish();
+        if (err === ABORT || (err && err.name === 'AbortError')) {
+          stats.aborted = true;
+          dbg('frag:abort', url);
+          if (callbacks.onAbort) callbacks.onAbort(stats, context, null);
+          return;
+        }
+        dbg('frag:err', url, (err && err.message) || String(err));
+        callbacks.onError(netErrorPayload(err), context, null, stats);
+      });
+  }
+}
+
+/* ============================================================
+   播放器控制
+   ============================================================ */
+const video = $('video');
+
+function populateQuality() {
+  const sel = $('quality');
+  const hls = S.hls;
+  sel.innerHTML = '';
+  sel.add(new Option('自动', '-1'));
+  if (!hls || !hls.levels) return;
+  hls.levels.forEach((l, i) => {
+    const res = l.height > 0 ? l.height + 'p' : '档位 ' + (i + 1);
+    const rate = l.bitrate ? (l.bitrate / 1e6).toFixed(2) + ' Mbps' : '';
+    sel.add(new Option(res + (rate ? ' · ' + rate : ''), String(i)));
+  });
+  sel.value = hls.autoLevelEnabled ? '-1' : String(hls.currentLevel);
+}
+
+function updateLevelBadges() {
+  const hls = S.hls;
+  if (!hls) return;
+  const lv = hls.levels && hls.levels[hls.currentLevel];
+  if (lv) {
+    const hasRes = lv.width > 0 && lv.height > 0;
+    $('bRes').textContent = hasRes ? (lv.height + 'p') : '-';
+    $('bRate').textContent = lv.bitrate ? (lv.bitrate / 1e6).toFixed(2) + ' Mbps' : '-';
+  } else {
+    $('bRes').textContent = '-';
+    $('bRate').textContent = '-';
+  }
+  $('quality').value = hls.autoLevelEnabled ? '-1' : String(hls.currentLevel);
+}
+
+function destroyPlayback() {
+  if (S.hls) {
+    try { S.hls.destroy(); } catch (e) {}
+    S.hls = null;
+  }
+  video.removeAttribute('src');
+  try { video.load(); } catch (e) {}
+  S.playing = false;
+}
+
+function stopAll() {
+  destroyPlayback();
+  // 取消排队与在途任务
+  const queued = S.queue.splice(0, S.queue.length);
+  queued.forEach((t) => t.reject(ABORT));
+  S.running.forEach((t) => { try { t.ctrl.abort(); } catch (e) {} });
+  S.inflight.clear();
+  clearCache();
+  // 取消待执行的重试，避免用户点了停止后又被自动拉起
+  if (S.retryTimer) { clearTimeout(S.retryTimer); S.retryTimer = null; }
+  S.currentUrl = '';
+  $('quality').innerHTML = '<option value="-1">自动</option>';
+  $('bRes').textContent = '-';
+  $('bRate').textContent = '-';
+  $('liveHint').textContent = '已停止';
+  setOverlay('已停止播放，粘贴新的 <b>m3u8</b> 地址可重新开始。', false);
+}
+
+function startPlayback(rawUrl, isRetry) {
+  const url = (rawUrl || '').trim();
+  if (!url) {
+    log('请输入 m3u8 地址', 'warn');
+    return;
+  }
+  if (!/^https?:\/\//i.test(url)) {
+    log('仅支持 http/https 地址', 'warn');
+    setOverlay('仅支持 <b>http/https</b> 地址；本地文件请先通过服务托管。', false);
+    return;
+  }
+
+  stopAll();
+  S.currentUrl = url;
+  if (!isRetry) { S.manifestRetry = 0; S.netRetry = 0; }
+  S.net.downloads = 0; S.net.bytes = 0; S.net.errors = 0; S.net.prefetched = 0;
+  S.net.playerReqs = 0; S.net.hits = 0; S.net.activePeak = 0; S.net.bwEwma = 0;
+  S.spark = [];
+  S.speed = { bytes: 0, ts: now(), current: 0 };
+
+  setOverlay('正在加载播放列表…<br /><span style="font-size:11px;opacity:.6">' + url + '</span>', true);
+  $('liveHint').textContent = '加载中';
+  log('开始加载：' + url);
+
+  if (window.__nativeHls && (!window.Hls || !window.Hls.isSupported())) {
+    // Safari 原生 HLS
+    video.src = url;
+    video.play().catch(() => {});
+    setOverlay('已交由浏览器原生 HLS 播放（无并发统计）。', true);
+    $('liveHint').textContent = '原生模式';
+    log('使用原生 HLS 播放', 'warn');
+    return;
+  }
+
+  if (!window.Hls) {
+    setOverlay('hls.js 未就绪，请刷新页面重试。', false);
+    return;
+  }
+  if (!window.Hls.isSupported()) {
+    setOverlay('当前浏览器不支持 MSE，无法使用并发播放模式。', false);
+    return;
+  }
+
+  const hls = new window.Hls({
+    loader: PrefetchLoader,
+    fLoader: PrefetchLoader,
+    pLoader: PrefetchLoader,
+    enableWorker: true,
+    lowLatencyMode: true,
+    backBufferLength: 45,
+    maxBufferLength: 90,
+    maxMaxBufferLength: 180,
+    maxBufferSize: 120 * 1024 * 1024,
+    fragLoadingMaxRetry: 4,
+    fragLoadingRetryDelay: 600,
+    manifestLoadingMaxRetry: 2,
+    levelLoadingMaxRetry: 2,
+    fragLoadingTimeOut: 30000,
+    startLevel: -1
+  });
+  S.hls = hls;
+  window.__hls = hls;
+
+  hls.on(window.Hls.Events.MANIFEST_PARSED, (evt, data) => {
+    S.manifestRetry = 0;
+    S.netRetry = 0;
+    log('播放列表解析完成：' + data.levels.length + ' 个码率档位', 'ok');
+    populateQuality();
+    updateLevelBadges();
+    $('liveHint').textContent = '播放中';
+    setOverlay('正在起播…', true);
+    video.play().catch(() => setOverlay('已就绪，点击播放按钮开始。', false));
+  });
+
+  hls.on(window.Hls.Events.LEVEL_SWITCHED, () => updateLevelBadges());
+
+  hls.on(window.Hls.Events.FRAG_LOADED, (evt, data) => {
+    if (data && data.frag) {
+      // 仅在切到新分片时输出，避免日志刷屏
+      const sn = data.frag.sn;
+      if (S.__lastSn !== sn) {
+        S.__lastSn = sn;
+        log('分片 #' + sn + ' 就绪（' + fmtBytes(data.frag.__bytes || 0) + '）');
+      }
+    }
+  });
+
+  hls.on(window.Hls.Events.ERROR, (evt, data) => {
+    // data.response 是我们 Loader 传出的 { code, text }，其中 text 才是真实原因
+    const reason = (data.response && data.response.text) ||
+                   (data.error && data.error.message) || '未知错误';
+    const label = data.details || '';
+    if (!data.fatal) {
+      log('提示：' + label + ' · ' + reason, 'warn');
+      return;
+    }
+    log('致命错误：' + label + ' · ' + reason, 'err');
+
+    if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
+      // 播放列表拿不到时 hls.startLoad() 无效，必须重新加载源
+      if (/manifest|level|manifestLoad|levelLoad/i.test(label) && !/frag/i.test(label)) {
+        retryManifest(reason);
+        return;
+      }
+      if (S.netRetry < 3) {
+        S.netRetry++;
+        setOverlay('网络异常，正在重试（' + S.netRetry + '/3）…<br />' +
+          '<span style="font-size:11.5px;opacity:.75">' + reason + '</span>', true);
+        setTimeout(() => {
+          if (!S.hls) return;
+          try { S.hls.startLoad(); } catch (e) {}
+        }, 800 * S.netRetry);
+        return;
+      }
+    } else if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR) {
+      setOverlay('媒体解码错误，正在恢复…<br />' +
+        '<span style="font-size:11.5px;opacity:.75">' + reason + '</span>', true);
+      try { hls.recoverMediaError(); } catch (e) {}
+      return;
+    }
+
+    giveUp(reason);
+  });
+
+  hls.loadSource(url);
+  hls.attachMedia(video);
+}
+
+/** 播放列表加载失败：按 2s / 4s / 8s 退避重建播放器，最多 3 次 */
+function retryManifest(reason) {
+  if (S.manifestRetry >= 3) { giveUp(reason); return; }
+  S.manifestRetry++;
+  const wait = Math.min(2000 * Math.pow(2, S.manifestRetry - 1), 8000);
+  setOverlay(
+    '播放列表加载失败，' + (wait / 1000) + ' 秒后自动重试（第 ' + S.manifestRetry + '/3 次）…<br />' +
+    '<span style="font-size:11.5px;opacity:.75">' + reason + '</span><br />' +
+    '<span style="font-size:11px;opacity:.5">' + hintFor(reason) + '</span>', true);
+  log('播放列表加载失败，' + (wait / 1000) + 's 后重试：' + reason, 'warn');
+  S.retryTimer = setTimeout(() => {
+    if (S.currentUrl) startPlayback(S.currentUrl, true);
+  }, wait);
+}
+
+async function giveUp(reason) {
+  log('已停止尝试：' + reason, 'err');
+  $('liveHint').textContent = '播放失败';
+
+  const url = S.currentUrl;
+  if (S.hls) { try { S.hls.destroy(); } catch (e) {} S.hls = null; }
+
+  setOverlay(
+    '<b>播放失败</b><br />' +
+    '<span style="font-size:12px;opacity:.85">' + reason + '</span><br />' +
+    '<span style="font-size:11.5px;opacity:.5">正在诊断原因…</span>', false);
+
+  // 浏览器在被 CORS 拦截时不会暴露状态码，这里再探测一次以区分「不可达 / 缺 CORS 头」
+  let diag = null;
+  if (url && /Failed to fetch|NetworkError|Load failed/i.test(reason)) {
+    diag = await probeReachability(url);
+  }
+  if (S.currentUrl !== url && url) return; // 期间用户已切换地址，不要覆盖新的提示
+
+  setOverlay(
+    '<b>播放失败</b><br />' +
+    '<span style="font-size:12px;opacity:.85">' + reason + '</span><br />' +
+    '<span style="font-size:11.5px;opacity:.55">' + hintFor(reason, diag) + '</span>', false);
+}
+
+/* ============================================================
+   UI 交互
+   ============================================================ */
+function syncSlider(input, out, fmt) {
+  const pct = ((input.value - input.min) / (input.max - input.min)) * 100;
+  input.style.setProperty('--p', pct + '%');
+  out.textContent = fmt ? fmt(input.value) : input.value;
+}
+
+$('concRange').addEventListener('input', (e) => {
+  S.concurrency = Number(e.target.value);
+  syncSlider(e.target, $('concVal'));
+  pump();
+});
+$('aheadRange').addEventListener('input', (e) => {
+  S.prefetchAhead = Number(e.target.value);
+  syncSlider(e.target, $('aheadVal'));
+});
+$('cacheRange').addEventListener('input', (e) => {
+  S.cacheLimitMB = Number(e.target.value);
+  syncSlider(e.target, $('cacheVal'), (v) => v + ' MB');
+  trimCache();
+});
+$('prefetchToggle').addEventListener('click', (e) => {
+  S.prefetchEnabled = !S.prefetchEnabled;
+  e.target.classList.toggle('on', S.prefetchEnabled);
+  log('预取缓存已' + (S.prefetchEnabled ? '开启' : '关闭'));
+});
+
+/* ============================================================
+   网络代理（仅 Electron 桌面版可用）
+   ============================================================ */
+const proxyFields = ['proxyType', 'proxyHost', 'proxyPort', 'proxyUser', 'proxyPass'];
+
+function proxyStatusEl() { return $('proxyStatus'); }
+
+function setProxyStatus(text, on) {
+  const el = proxyStatusEl();
+  el.textContent = text;
+  el.className = 'p-status' + (on ? ' on' : '');
+}
+
+// 读取当前表单值
+function readProxyForm() {
+  return {
+    enabled: false,
+    type: $('proxyType').value,
+    host: ($('proxyHost').value || '').trim(),
+    port: Number($('proxyPort').value) || 0,
+    user: ($('proxyUser').value || '').trim(),
+    pass: $('proxyPass').value || ''
+  };
+}
+
+// 校验并提交到主进程
+async function applyProxy() {
+  const cfg = readProxyForm();
+  if (!cfg.host) {
+    log('代理：请先填写主机地址', 'warn');
+    return;
+  }
+  if (!(cfg.port >= 1 && cfg.port <= 65535)) {
+    log('代理：端口需在 1~65535 之间', 'warn');
+    return;
+  }
+  cfg.enabled = true;
+  try {
+    await window.proxyApi.setProxy(cfg);
+    setProxyStatus('已启用 · ' + cfg.type.toUpperCase());
+    log('代理已应用：' + cfg.type + '://' + cfg.host + ':' + cfg.port, 'ok');
+  } catch (e) {
+    setProxyStatus('应用失败', false);
+    log('代理应用失败：' + (e && e.message || e), 'err');
+  }
+}
+
+// 关闭代理
+async function clearProxy() {
+  try {
+    await window.proxyApi.setProxy({ enabled: false });
+    setProxyStatus('已关闭', false);
+    log('代理已关闭，恢复直连');
+  } catch (e) {
+    log('关闭代理失败：' + (e && e.message || e), 'err');
+  }
+}
+
+$('proxyApply').addEventListener('click', applyProxy);
+$('proxyClear').addEventListener('click', clearProxy);
+// 按回车快捷应用
+['proxyType', 'proxyHost', 'proxyPort'].forEach((id) => {
+  $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') applyProxy(); });
+});
+
+// 非桌面环境（直接用浏览器打开页面）时，代理走不了主进程，禁用该功能
+if (!window.proxyApi) {
+  setProxyStatus('仅桌面版可用');
+  $('proxyApply').disabled = true;
+  $('proxyClear').disabled = true;
+}
+
+// 启动时把已保存的代理配置同步回表单（让页面值与真实生效的代理一致）
+if (window.proxyApi) {
+  window.proxyApi.getProxy().then((saved) => {
+    if (!saved) return;
+    $('proxyType').value = saved.type === 'socks5' ? 'socks5' : 'http';
+    $('proxyHost').value = saved.host || '';
+    $('proxyPort').value = saved.port || '';
+    $('proxyUser').value = saved.user || '';
+    $('proxyPass').value = saved.pass || '';
+    if (saved.enabled && saved.host) {
+      setProxyStatus('已启用 · ' + saved.type.toUpperCase());
+    }
+  }).catch(() => {});
+}
+
+/* ============================================================
+   浏览器 UA（仅 Electron 桌面版可用）
+   ============================================================ */
+let uaState = { enabled: false, defaultValue: '' };
+
+function uaToggleOn(on) {
+  const t = $('uaToggle');
+  t.classList.toggle('on', on);
+  $('uaHint').textContent = on ? '已启用' : '默认模仿 Windows Chrome';
+}
+
+async function applyUa() {
+  const value = ($('uaInput').value || '').trim();
+  if (!value) {
+    log('UA：不能为空', 'warn');
+    return;
+  }
+  const enabled = $('uaToggle').classList.contains('on');
+  try {
+    await window.uaApi.setUa({ enabled, value });
+    uaToggleOn(enabled);
+    log('自定义 UA 已' + (enabled ? '启用' : '恢复默认'));
+  } catch (e) {
+    log('UA 应用失败：' + (e && e.message || e), 'err');
+  }
+}
+
+async function resetUa() {
+  $('uaInput').value = uaState.defaultValue || '';
+  try {
+    await window.uaApi.setUa({ enabled: true, value: uaState.defaultValue || $('uaInput').value });
+    uaToggleOn(true);
+    log('UA 已恢复为默认值');
+  } catch (e) {
+    log('UA 应用失败：' + (e && e.message || e), 'err');
+  }
+}
+
+$('uaApply').addEventListener('click', applyUa);
+$('uaReset').addEventListener('click', resetUa);
+$('uaToggle').addEventListener('click', () => uaToggleOn(!$('uaToggle').classList.contains('on'))); // 仅切换显式状态，交「应用 UA」生效
+
+// 非桌面环境禁用
+if (!window.uaApi) {
+  uaToggleOn(false);
+  $('uaApply').disabled = true;
+  $('uaReset').disabled = true;
+} else {
+  // 启动时回填已保存的 UA 配置
+  window.uaApi.getUa().then((saved) => {
+    uaState = saved || {};
+    if (saved && saved.value) $('uaInput').value = saved.value;
+    uaToggleOn(!!(saved && saved.enabled));
+  }).catch(() => {});
+}
+
+$('loadBtn').addEventListener('click', () => startPlayback($('urlInput').value));
+$('urlInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') startPlayback($('urlInput').value);
+});
+$('stopBtn').addEventListener('click', () => { log('已停止'); stopAll(); });
+$('clearLog').addEventListener('click', () => { $('log').innerHTML = ''; });
+
+Array.from(document.querySelectorAll('.chip')).forEach((chip) => {
+  chip.addEventListener('click', () => {
+    $('urlInput').value = chip.dataset.url;
+    startPlayback(chip.dataset.url);
+  });
+});
+
+$('quality').addEventListener('change', (e) => {
+  if (!S.hls) return;
+  const v = Number(e.target.value);
+  S.hls.currentLevel = v; // -1 表示自动
+  log(v === -1 ? '切换为自动码率' : '手动切换到档位 ' + v);
+});
+
+video.addEventListener('playing', () => {
+  hideOverlay();
+  S.playing = true;
+  $('liveHint').textContent = '播放中';
+});
+video.addEventListener('waiting', () => {
+  if (S.playing) setOverlay('缓冲中…', true);
+});
+video.addEventListener('error', () => {
+  if (!S.hls) setOverlay('视频元素报错，可能是流本身不可播放。', false);
+});
+
+/* ============================================================
+   数据面板刷新
+   ============================================================ */
+function initSpark() {
+  const c = $('spark');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = c.getBoundingClientRect();
+  if (!rect.width) return;
+  c.width = Math.floor(rect.width * dpr);
+  c.height = Math.floor(54 * dpr);
+  const ctx = c.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  S.sparkCtx = ctx;
+  S.sparkW = rect.width;
+  S.sparkH = 54;
+}
+
+function drawSpark() {
+  const ctx = S.sparkCtx;
+  if (!ctx) return;
+  const w = S.sparkW, h = S.sparkH;
+  ctx.clearRect(0, 0, w, h);
+
+  // 基线网格
+  ctx.strokeStyle = 'rgba(255,255,255,.05)';
+  ctx.lineWidth = 1;
+  for (let i = 1; i < 3; i++) {
+    const y = (h / 3) * i;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+  }
+
+  const data = S.spark;
+  if (data.length < 2) return;
+  const max = Math.max.apply(null, data.concat([1]));
+  const n = 60;
+  const step = w / (n - 1);
+  const offset = n - data.length;
+
+  const pts = data.map((v, i) => [ (offset + i) * step, h - 3 - (v / max) * (h - 10) ]);
+
+  // 面积
+  const grad = ctx.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, 'rgba(34,211,238,.35)');
+  grad.addColorStop(1, 'rgba(34,211,238,0)');
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], h);
+  pts.forEach((p) => ctx.lineTo(p[0], p[1]));
+  ctx.lineTo(pts[pts.length - 1][0], h);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // 折线
+  ctx.beginPath();
+  pts.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
+  ctx.strokeStyle = '#22d3ee';
+  ctx.lineWidth = 1.6;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+}
+
+function tick() {
+  // 速度采样
+  const t = now();
+  const dt = (t - S.speed.ts) / 1000;
+  if (dt > 0) {
+    S.speed.current = Math.max(0, (S.net.bytes - S.speed.bytes) / dt);
+    S.speed.bytes = S.net.bytes;
+    S.speed.ts = t;
+  }
+  S.spark.push(S.speed.current);
+  if (S.spark.length > 60) S.spark.shift();
+
+  const n = S.net;
+  $('mDownloaded').textContent = String(n.downloads);
+  $('mBytes').textContent = fmtBytes(n.bytes);
+  $('mSpeed').textContent = fmtSpeed(S.speed.current);
+  $('mBw').textContent = n.bwEwma ? '均值 ' + fmtSpeed(n.bwEwma) : '—';
+  $('mCache').textContent = fmtBytes(S.cacheBytes);
+  $('mItems').textContent = S.cache.size + ' 条 / 上限 ' + S.cacheLimitMB + ' MB';
+  $('mActive').textContent = S.active + ' / ' + S.concurrency;
+  $('mQueue').textContent = '队列 ' + S.queue.length + ' · 峰值 ' + n.activePeak;
+  $('mPrefetch').textContent = n.prefetched + ' / ' + n.errors;
+
+  const reqs = n.playerReqs || 0;
+  const rate = reqs ? Math.round((n.hits / reqs) * 100) : 0;
+  $('mHit').textContent = rate + '%';
+  $('mHitDetail').textContent = n.hits + ' / ' + reqs + ' 次请求';
+  $('bHit').textContent = rate + '%';
+
+  // 缓冲时长
+  try {
+    if (video.buffered.length) {
+      const end = video.buffered.end(video.buffered.length - 1);
+      const buf = Math.max(0, end - video.currentTime);
+      $('bBuf').textContent = buf.toFixed(1) + 's';
+    }
+  } catch (e) {}
+
+  drawSpark();
+}
+
+/* ============================================================
+   启动
+   ============================================================ */
+window.addEventListener('resize', () => { initSpark(); drawSpark(); });
+
+initSpark();
+syncSlider($('concRange'), $('concVal'));
+syncSlider($('aheadRange'), $('aheadVal'));
+syncSlider($('cacheRange'), $('cacheVal'), (v) => v + ' MB');
+setInterval(tick, 250);
+
+initEngine().then((ok) => {
+  if (ok) log('hls.js 引擎就绪', 'ok');
+  else log('引擎初始化失败', 'err');
+});
+log('控制台就绪，等待地址…');
+</script>
+</body>
+</html>
