@@ -41,7 +41,8 @@ jobs:
         shell: bash
         env:
           ARGS: ${{ matrix.args }}
-        run: npx electron-builder $ARGS
+        # --publish never 关闭发布，避免残留 draft release 触发需要 GH_TOKEN 的发布流程
+        run: npx electron-builder $ARGS --publish never
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
