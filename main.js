@@ -181,17 +181,32 @@ function buildMenu() {
   return Menu.buildFromTemplate(template);
 }
 
-app.whenReady().then(() => {
-  loadSettings();
-  registerIpc();
-  Menu.setApplicationMenu(buildMenu());
-  createWindow();
-
-  app.on('activate', () => {
-    // macOS：点击 Dock 图标时若无窗口则重建
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+// 单实例锁：Windows 上再次打开程序时不另起窗口，而是聚焦已有窗口；
+// macOS 本身单实例，此锁同样生效且不破坏「点 Dock 重建唯一窗口」的行为。
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    const win = BrowserWindow.getAllWindows()[0];
+    if (win) {
+      if (win.isMinimized()) win.restore();
+      win.focus();
+    }
   });
-});
+
+  app.whenReady().then(() => {
+    loadSettings();
+    registerIpc();
+    Menu.setApplicationMenu(buildMenu());
+    createWindow();
+
+    app.on('activate', () => {
+      // macOS：点击 Dock 图标时若无窗口则重建
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  });
+}
 
 app.on('window-all-closed', () => {
   if (!isMac) app.quit();
