@@ -45,8 +45,9 @@ jobs:
         shell: bash
         run: |
           set -e
-          VER=$(curl -fsSL https://api.github.com/repos/fastfetch-cli/fastfetch/releases/latest | grep -i '"tag_name"' | head -1 | sed 's/.*"v\([^"]*\)".*/\1/')
-          echo "fastfetch version: v${VER}"
+          # 不调 api.github.com（易被限流 403），改为跟随 releases/latest 重定向解析最新版本号
+          VER=$(curl -fsSL -o /dev/null -w '%{url_effective}' https://github.com/fastfetch-cli/fastfetch/releases/latest | sed 's#.*/v##')
+          echo "fastfetch version: ${VER}"
           case "$RUNNER_OS" in
             macOS)
               ARCH=x86_64
