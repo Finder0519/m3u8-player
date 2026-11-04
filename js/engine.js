@@ -12,7 +12,9 @@
   const HLS_CDNS = [
     'https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js',
     'https://unpkg.com/hls.js@1.5.17/dist/hls.min.js',
-    'https://cdn.jsdelivr.net/npm/hls.js@1.4.12/dist/hls.min.js'
+    'https://cdn.jsdelivr.net/npm/hls.js@1.4.12/dist/hls.min.js',
+    'https://registry.npmmirror.com/hls.js/1.5.17/files/dist/hls.min.js',
+    'https://registry.npmmirror.com/hls.js/1.4.12/files/dist/hls.min.js'
   ];
   const engineDot = document.getElementById('engineDot');
   const engineName = document.getElementById('engineName');
