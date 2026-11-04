@@ -46,27 +46,28 @@ jobs:
         run: |
           set -e
           # 不调 api.github.com（易被限流 403），改为跟随 releases/latest 重定向解析最新版本号
-          VER=$(curl -fsSL -o /dev/null -w '%{url_effective}' https://github.com/fastfetch-cli/fastfetch/releases/latest | sed 's#.*/v##')
+          # tag 形如 releases/tag/2.70.0（无 v 前缀），取最后一个 / 之后的段即可
+          VER=$(curl -fsSL -o /dev/null -w '%{url_effective}' https://github.com/fastfetch-cli/fastfetch/releases/latest | sed 's#.*/##')
           echo "fastfetch version: ${VER}"
           case "$RUNNER_OS" in
             macOS)
               ARCH=x86_64
               [ "$(uname -m)" = "arm64" ] && ARCH=aarch64
-              curl -fsSL -o ff.tar.gz "https://github.com/fastfetch-cli/fastfetch/releases/download/v${VER}/fastfetch-macos-${ARCH}.tar.gz"
+              curl -fsSL -o ff.tar.gz "https://github.com/fastfetch-cli/fastfetch/releases/download/${VER}/fastfetch-macos-${ARCH}.tar.gz"
               tar -xzf ff.tar.gz
               sudo mkdir -p /usr/local/bin && sudo cp fastfetch-*/bin/fastfetch /usr/local/bin/
               ;;
             Linux)
               ARCH=x86_64
               [ "$(uname -m)" = "aarch64" ] && ARCH=aarch64
-              curl -fsSL -o ff.tar.gz "https://github.com/fastfetch-cli/fastfetch/releases/download/v${VER}/fastfetch-linux-${ARCH}.tar.gz"
+              curl -fsSL -o ff.tar.gz "https://github.com/fastfetch-cli/fastfetch/releases/download/${VER}/fastfetch-linux-${ARCH}.tar.gz"
               tar -xzf ff.tar.gz
               sudo mkdir -p /usr/local/bin && sudo cp fastfetch-*/bin/fastfetch /usr/local/bin/
               ;;
             Windows)
               ARCH=amd64
               [ "$PROCESSOR_ARCHITECTURE" = "ARM64" ] && ARCH=aarch64
-              curl -fsSL -o ff.zip "https://github.com/fastfetch-cli/fastfetch/releases/download/v${VER}/fastfetch-windows-${ARCH}.zip"
+              curl -fsSL -o ff.zip "https://github.com/fastfetch-cli/fastfetch/releases/download/${VER}/fastfetch-windows-${ARCH}.zip"
               unzip -oq ff.zip
               mv fastfetch-*/fastfetch.exe ./fastfetch.exe
               ;;
