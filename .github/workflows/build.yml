@@ -40,6 +40,46 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # 从 fastfetch 的 GitHub Release 下载预编译二进制（不依赖系统包仓库，更稳）
+      - name: Install fastfetch
+        shell: bash
+        run: |
+          set -e
+          VER=$(curl -fsSL https://api.github.com/repos/fastfetch-cli/fastfetch/releases/latest | grep -i '"tag_name"' | head -1 | sed 's/.*"v\([^"]*\)".*/\1/')
+          echo "fastfetch version: v${VER}"
+          case "$RUNNER_OS" in
+            macOS)
+              ARCH=x86_64
+              [ "$(uname -m)" = "arm64" ] && ARCH=aarch64
+              curl -fsSL -o ff.tar.gz "https://github.com/fastfetch-cli/fastfetch/releases/download/v${VER}/fastfetch-macos-${ARCH}.tar.gz"
+              tar -xzf ff.tar.gz
+              sudo mkdir -p /usr/local/bin && sudo cp fastfetch-*/bin/fastfetch /usr/local/bin/
+              ;;
+            Linux)
+              ARCH=x86_64
+              [ "$(uname -m)" = "aarch64" ] && ARCH=aarch64
+              curl -fsSL -o ff.tar.gz "https://github.com/fastfetch-cli/fastfetch/releases/download/v${VER}/fastfetch-linux-${ARCH}.tar.gz"
+              tar -xzf ff.tar.gz
+              sudo mkdir -p /usr/local/bin && sudo cp fastfetch-*/bin/fastfetch /usr/local/bin/
+              ;;
+            Windows)
+              ARCH=amd64
+              [ "$PROCESSOR_ARCHITECTURE" = "ARM64" ] && ARCH=aarch64
+              curl -fsSL -o ff.zip "https://github.com/fastfetch-cli/fastfetch/releases/download/v${VER}/fastfetch-windows-${ARCH}.zip"
+              unzip -oq ff.zip
+              mv fastfetch-*/fastfetch.exe ./fastfetch.exe
+              ;;
+          esac
+
+      # 输出当前构建环境的系统信息
+      - name: Show system info (fastfetch)
+        shell: bash
+        run: |
+          case "$RUNNER_OS" in
+            Windows) ./fastfetch.exe || true ;;
+            *) fastfetch || true ;;
+          esac
+
       - name: Build for ${{ matrix.platform }}
         shell: bash
         env:
