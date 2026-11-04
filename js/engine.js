@@ -1,6 +1,6 @@
 /* ============================================================
    engine.js
-   引擎加载（多 CDN 回退）
+   引擎加载（纯本地，从 js/hls.min.js 加载，不依赖 CDN）
    依赖：core.js（M3U8.setOverlay / M3U8.$）
    导出：M3U8.loadScript / M3U8.initEngine
    ============================================================ */
@@ -9,13 +9,7 @@
   const M3U8 = window.M3U8;
   const { $, setOverlay } = M3U8;
 
-  const HLS_CDNS = [
-    'https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js',
-    'https://unpkg.com/hls.js@1.5.17/dist/hls.min.js',
-    'https://cdn.jsdelivr.net/npm/hls.js@1.4.12/dist/hls.min.js',
-    'https://registry.npmmirror.com/hls.js/1.5.17/files/dist/hls.min.js',
-    'https://registry.npmmirror.com/hls.js/1.4.12/files/dist/hls.min.js'
-  ];
+  const LOCAL_HLS = 'js/hls.min.js';  // 本地副本，全离线加载
   const engineDot = document.getElementById('engineDot');
   const engineName = document.getElementById('engineName');
 
@@ -30,15 +24,15 @@
   }
 
   async function initEngine() {
-    for (const src of HLS_CDNS) {
-      try {
-        await loadScript(src);
-        if (window.Hls) {
-          engineDot.className = 'dot ok';
-          engineName.textContent = 'hls.js ' + (window.Hls.version || '');
-          return true;
-        }
-      } catch (e) { /* 尝试下一个 */ }
+    try {
+      await loadScript(LOCAL_HLS);
+      if (window.Hls) {
+        engineDot.className = 'dot ok';
+        engineName.textContent = 'hls.js ' + (window.Hls.version || '');
+        return true;
+      }
+    } catch (e) {
+      // 本地文件缺失：不依赖 CDN，直接走原生回退
     }
     // 原生 HLS 回退（Safari / iOS）
     const v = document.getElementById('video');
@@ -50,7 +44,7 @@
     }
     engineDot.className = 'dot err';
     engineName.textContent = '引擎不可用';
-    setOverlay('引擎加载失败：无法获取 hls.js，且当前浏览器不支持原生 HLS。<br />请检查网络后刷新页面。', false);
+    setOverlay('引擎加载失败：无法获取本地 hls.js（js/hls.min.js 缺失），且当前浏览器不支持原生 HLS。<br />请确认本地文件存在后刷新页面。', false);
     return false;
   }
 
