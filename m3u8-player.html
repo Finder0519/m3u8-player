@@ -100,6 +100,8 @@
 
   /* ---------- 主区域 ---------- */
   .workspace { display: grid; grid-template-columns: minmax(0, 1fr) 372px; gap: 16px; align-items: start; }
+  /* 左列：播放器 + 事件日志，纵向撑满，把播放器下方的空间交给日志 */
+  .stage-col { display: flex; flex-direction: column; gap: 16px; align-self: stretch; min-width: 0; }
 
   .stage { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
   .video-wrap { position: relative; background: #000; aspect-ratio: 16 / 9; max-height: 68vh; }
@@ -214,7 +216,7 @@
   .spark-head { display: flex; justify-content: space-between; font-size: 10.5px; color: #5d6b80; margin-top: 12px; }
 
   .log-card { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-  .log { height: 168px; overflow-y: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; line-height: 1.65; }
+  .log { flex: 1; min-height: 168px; overflow-y: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; line-height: 1.65; }
   .log::-webkit-scrollbar { width: 6px; }
   .log::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .12); border-radius: 3px; }
   .log-line { display: flex; gap: 8px; padding: 2px 0; color: #7e8ea5; }
@@ -230,8 +232,8 @@
 
   @media (max-width: 1080px) {
     .workspace { grid-template-columns: 1fr; }
+    .stage-col { align-self: auto; }
     .panel { display: grid; grid-template-columns: 1fr 1fr; }
-    .log-card { grid-column: 1 / -1; }
   }
   @media (max-width: 720px) {
     .app { padding: 16px 14px 32px; }
@@ -274,24 +276,31 @@
   </section>
 
   <main class="workspace">
-    <section class="stage">
-      <div class="video-wrap">
-        <video id="video" controls playsinline preload="none"></video>
-        <div class="overlay" id="overlay">
-          <div class="spinner" id="spinner"></div>
-          <div class="msg" id="overlayMsg">粘贴一个 <b>m3u8</b> 地址后点击「加载播放」<br />支持点播 / 直播 / 加密 / fMP4 流</div>
+    <div class="stage-col">
+      <section class="stage">
+        <div class="video-wrap">
+          <video id="video" controls playsinline preload="none"></video>
+          <div class="overlay" id="overlay">
+            <div class="spinner" id="spinner"></div>
+            <div class="msg" id="overlayMsg">粘贴一个 <b>m3u8</b> 地址后点击「加载播放」<br />支持点播 / 直播 / 加密 / fMP4 流</div>
+          </div>
         </div>
-      </div>
-      <div class="stage-bar">
-        <div class="qi"><span>画质</span><select id="quality"><option value="-1">自动</option></select></div>
-        <div class="badges">
-          <span class="badge">分辨率 <b id="bRes">-</b></span>
-          <span class="badge">码率 <b id="bRate">-</b></span>
-          <span class="badge">缓冲 <b id="bBuf">0.0s</b></span>
-          <span class="badge hl">命中 <b id="bHit">0%</b></span>
+        <div class="stage-bar">
+          <div class="qi"><span>画质</span><select id="quality"><option value="-1">自动</option></select></div>
+          <div class="badges">
+            <span class="badge">分辨率 <b id="bRes">-</b></span>
+            <span class="badge">码率 <b id="bRate">-</b></span>
+            <span class="badge">缓冲 <b id="bBuf">0.0s</b></span>
+            <span class="badge hl">命中 <b id="bHit">0%</b></span>
+          </div>
         </div>
+      </section>
+
+      <div class="card log-card">
+        <div class="card-head">事件日志 <button class="mini" id="clearLog">清空</button></div>
+        <div class="log" id="log"></div>
       </div>
-    </section>
+    </div>
 
     <aside class="panel">
       <div class="card">
@@ -375,11 +384,6 @@
         </div>
         <div class="spark-head"><span>下载速度曲线</span><span>近 15 秒</span></div>
         <canvas id="spark" height="54"></canvas>
-      </div>
-
-      <div class="card log-card">
-        <div class="card-head">事件日志 <button class="mini" id="clearLog">清空</button></div>
-        <div class="log" id="log"></div>
       </div>
     </aside>
   </main>
