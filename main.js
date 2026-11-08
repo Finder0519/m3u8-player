@@ -9,7 +9,7 @@ const isMac = process.platform === 'darwin';
    ============================================================ */
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 
-let proxy = { enabled: false, type: 'http', host: '', port: 7890, user: '', pass: '' };
+let proxy = { enabled: false, mode: 'custom', type: 'http', host: '', port: 7890, user: '', pass: '' };
 
 // 自定义 UA：默认模仿 Windows Chrome（应对防盗链流）
 const DEFAULT_UA =
@@ -42,10 +42,18 @@ function buildProxyRules(cfg) {
   return `${scheme}://${auth}${cfg.host}:${cfg.port}`;
 }
 
-// 把一个窗口的会话切到「直连」或「指定代理」
+// 把一个窗口的会话切到「直连」「跟随系统代理」或「指定代理」
 function applyProxyTo(ses, cfg) {
-  const mode = cfg.enabled ? 'fixed_servers' : 'direct';
-  const rules = cfg.enabled ? buildProxyRules(cfg) : undefined;
+  if (!cfg.enabled) {
+    ses.setProxy({ mode: 'direct' }, () => {});
+    return;
+  }
+  if (cfg.mode === 'system') {
+    ses.setProxy({ mode: 'system' }, () => {});
+    return;
+  }
+  const rules = buildProxyRules(cfg);
+  const mode = rules ? 'fixed_servers' : 'direct';
   ses.setProxy({ mode, ...(rules ? { proxyRules: rules } : {}) }, () => {});
 }
 

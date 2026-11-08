@@ -203,6 +203,7 @@
   .proxy-actions .primary, .proxy-actions .ghost { height: 34px; flex: 1; font-size: 12.5px; }
   .proxy-row-label { display: block; margin-bottom: 6px; font-size: 12px; color: var(--muted); }
   .proxy-actions button:disabled { opacity: .4; cursor: not-allowed; }
+  .proxy-type select:disabled, .card input:disabled { opacity: .45; cursor: not-allowed; }
 
   .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
   .metric {
@@ -331,6 +332,10 @@
             <option value="socks5">SOCKS5</option>
           </select>
           <span class="p-status" id="proxyStatus">已关闭</span>
+        </div>
+        <div class="switch">
+          <span>跟随系统代理</span>
+          <button class="toggle" id="proxySystemToggle" aria-label="跟随系统代理"></button>
         </div>
         <div class="proxy-grid">
           <div>

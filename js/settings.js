@@ -13,6 +13,7 @@
      网络代理（仅 Electron 桌面版可用）
      ============================================================ */
   const proxyFields = ['proxyType', 'proxyHost', 'proxyPort', 'proxyUser', 'proxyPass'];
+  const systemModeId = 'proxySystemToggle';
 
   function proxyStatusEl() { return $('proxyStatus'); }
 
@@ -22,10 +23,18 @@
     el.className = 'p-status' + (on ? ' on' : '');
   }
 
+  // 切换「跟随系统代理」：开启时禁用自定义代理表单
+  function setProxyMode(mode) {
+    const system = mode === 'system';
+    $(systemModeId).classList.toggle('on', system);
+    proxyFields.forEach((id) => { $(id).disabled = system; });
+  }
+
   // 读取当前表单值
   function readProxyForm() {
     return {
       enabled: false,
+      mode: $(systemModeId).classList.contains('on') ? 'system' : 'custom',
       type: $('proxyType').value,
       host: ($('proxyHost').value || '').trim(),
       port: Number($('proxyPort').value) || 0,
@@ -37,19 +46,24 @@
   // 校验并提交到主进程
   async function applyProxy() {
     const cfg = readProxyForm();
-    if (!cfg.host) {
-      log('代理：请先填写主机地址', 'warn');
-      return;
-    }
-    if (!(cfg.port >= 1 && cfg.port <= 65535)) {
-      log('代理：端口需在 1~65535 之间', 'warn');
-      return;
+    if (cfg.mode === 'custom') {
+      if (!cfg.host) {
+        log('代理：请先填写主机地址', 'warn');
+        return;
+      }
+      if (!(cfg.port >= 1 && cfg.port <= 65535)) {
+        log('代理：端口需在 1~65535 之间', 'warn');
+        return;
+      }
     }
     cfg.enabled = true;
+    const label = cfg.mode === 'system' ? '跟随系统' : cfg.type.toUpperCase();
     try {
       await window.proxyApi.setProxy(cfg);
-      setProxyStatus('已启用 · ' + cfg.type.toUpperCase());
-      log('代理已应用：' + cfg.type + '://' + cfg.host + ':' + cfg.port, 'ok');
+      setProxyStatus('已启用 · ' + label);
+      log(cfg.mode === 'system'
+        ? '代理已启用：跟随系统设置'
+        : '代理已应用：' + cfg.type + '://' + cfg.host + ':' + cfg.port, 'ok');
     } catch (e) {
       setProxyStatus('应用失败', false);
       log('代理应用失败：' + (e && e.message || e), 'err');
@@ -69,6 +83,9 @@
 
   $('proxyApply').addEventListener('click', applyProxy);
   $('proxyClear').addEventListener('click', clearProxy);
+  $(systemModeId).addEventListener('click', () => {
+    setProxyMode($(systemModeId).classList.contains('on') ? 'custom' : 'system');
+  });
   // 按回车快捷应用
   ['proxyType', 'proxyHost', 'proxyPort'].forEach((id) => {
     $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') applyProxy(); });
@@ -79,19 +96,21 @@
     setProxyStatus('仅桌面版可用');
     $('proxyApply').disabled = true;
     $('proxyClear').disabled = true;
+    $(systemModeId).disabled = true;
   }
 
   // 启动时把已保存的代理配置同步回表单（让页面值与真实生效的代理一致）
   if (window.proxyApi) {
     window.proxyApi.getProxy().then((saved) => {
       if (!saved) return;
+      setProxyMode(saved.mode === 'system' ? 'system' : 'custom');
       $('proxyType').value = saved.type === 'socks5' ? 'socks5' : 'http';
       $('proxyHost').value = saved.host || '';
       $('proxyPort').value = saved.port || '';
       $('proxyUser').value = saved.user || '';
       $('proxyPass').value = saved.pass || '';
-      if (saved.enabled && saved.host) {
-        setProxyStatus('已启用 · ' + saved.type.toUpperCase());
+      if (saved.enabled && (saved.mode === 'system' || saved.host)) {
+        setProxyStatus('已启用 · ' + (saved.mode === 'system' ? '跟随系统' : saved.type.toUpperCase()));
       }
     }).catch(() => {});
   }
