@@ -9,11 +9,12 @@ const path = require('path');
 // 导致 macOS 15 的「本地网络」权限无法归属到该应用（TCC 静默丢弃局域网连接）。
 // 这里在打包阶段兜底：签名无效时用 ad-hoc 证书完整封印 bundle。
 module.exports = async function (context) {
-  if (process.platform !== 'darwin' || context.electronPlatformName !== 'mac') {
+  if (process.platform !== 'darwin') {
     return;
   }
 
-  const appPath = path.join(context.appOutDir, `${context.productFilename}.app`);
+  const productFilename = context.packager.appInfo.productFilename;
+  const appPath = path.join(context.appOutDir, `${productFilename}.app`);
 
   try {
     // 已有有效签名（例如后续配置了开发者证书）就不需要处理
@@ -24,5 +25,6 @@ module.exports = async function (context) {
   }
 
   execFileSync('codesign', ['--force', '--deep', '--sign', '-', appPath], { stdio: 'inherit' });
+  execFileSync('codesign', ['--verify', '--deep', '--strict', appPath], { stdio: 'inherit' });
   console.log(`[after-pack] 已对 ${appPath} 执行 ad-hoc 封印签名`);
 };

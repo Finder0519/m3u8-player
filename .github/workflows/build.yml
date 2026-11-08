@@ -88,6 +88,22 @@ jobs:
         # --publish never 关闭发布，避免残留 draft release 触发需要 GH_TOKEN 的发布流程
         run: npx electron-builder $ARGS --publish never
 
+      - name: Verify macOS app
+        if: matrix.platform == 'mac'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find dist -maxdepth 3 -type d -name '*.app' -print -quit)"
+          if [[ -z "$APP_PATH" ]]; then
+            echo "未找到打包后的 macOS .app bundle" >&2
+            exit 1
+          fi
+
+          echo "Verifying $APP_PATH"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          test -f "$APP_PATH/Contents/_CodeSignature/CodeResources"
+          plutil -extract NSLocalNetworkUsageDescription raw -o - "$APP_PATH/Contents/Info.plist"
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v6
         with:
