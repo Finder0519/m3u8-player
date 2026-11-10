@@ -18,6 +18,7 @@
   "build": {
     "appId": "com.m3u8.player",
     "productName": "M3U8 多线程播放器",
+    "artifactName": "m3u8-player-${version}-${os}-${arch}.${ext}",
     "afterPack": "scripts/after-pack.js",
     "files": [
       "main.js",
