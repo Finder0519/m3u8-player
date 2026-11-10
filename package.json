@@ -1,6 +1,6 @@
 {
   "name": "m3u8-player",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "M3U8 多线程播放器桌面版",
   "main": "main.js",
   "scripts": {
