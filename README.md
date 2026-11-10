@@ -2,7 +2,7 @@
 
 ## 发布新版本
 
-发布流程会构建 macOS（zip）、Windows（nsis exe）、Linux（AppImage）安装包，并发布到 GitHub Releases。三种触发方式：
+发布流程会构建 macOS（DMG，arm64/x64）、Windows（NSIS exe）、Linux（AppImage）安装包，并发布到 GitHub Releases。三种触发方式：
 
 1. **push 到 main（默认）**：推送/合并到 main 即自动发布；只改 `docs/**` 或 `*.md` 的推送不触发。
 2. **一键发布**：仓库 Actions 页 → `Release` → `Run workflow`。

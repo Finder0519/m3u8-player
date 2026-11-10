@@ -85,16 +85,20 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # mac：GitHub 的 arm64 runner 无法打 DMG(hdiutil 受限)，只产出 zip 免安装包
+          # mac：arm64/x64 各打一个 DMG，统一在 arm64 runner 上构建（x64 交叉打包），
+          # 使 dmg 走 APFS 镜像路径，规避 macOS 26.4+ 的 HFS+ 挂载故障（electron-builder#9615）
           - os: macos-latest
-            platform: mac
-            args: '--mac zip'
+            platform: mac-arm64
+            args: '--mac dmg --arm64'
+          - os: macos-latest
+            platform: mac-x64
+            args: '--mac dmg --x64'
           - os: windows-latest
             platform: win
-            args: '--win'
+            args: '--win nsis'
           - os: ubuntu-latest
             platform: linux
-            args: '--linux'
+            args: '--linux appimage'
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -123,7 +127,7 @@ jobs:
           npx electron-builder $ARGS --publish never
 
       - name: Verify macOS app
-        if: matrix.platform == 'mac'
+        if: startsWith(matrix.platform, 'mac')
         shell: bash
         run: |
           set -euo pipefail
@@ -138,16 +142,28 @@ jobs:
           test -f "$APP_PATH/Contents/_CodeSignature/CodeResources"
           plutil -extract NSLocalNetworkUsageDescription raw -o - "$APP_PATH/Contents/Info.plist"
 
+          # DMG 必须能正常挂载且包含 .app（macOS 26.4+ 曾因 HFS+ 问题挂载失败）；
+          # 卷名含空格，用 -mountpoint 显式指定挂载点，避免解析 hdiutil 输出
+          DMG_PATH="$(find dist -maxdepth 1 -type f -name '*.dmg' -print -quit)"
+          if [[ -z "$DMG_PATH" ]]; then
+            echo "未找到打包后的 DMG" >&2
+            exit 1
+          fi
+          MOUNT_POINT="$(mktemp -d)"
+          echo "Mounting $DMG_PATH"
+          hdiutil attach "$DMG_PATH" -nobrowse -readonly -mountpoint "$MOUNT_POINT"
+          test -d "$MOUNT_POINT/$(basename "$APP_PATH")"
+          hdiutil detach "$MOUNT_POINT" -quiet
+          rmdir "$MOUNT_POINT" || true
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
           name: 'release-${{ matrix.platform }}'
           path: |
             dist/*.dmg
-            dist/*.zip
             dist/*.exe
             dist/*.AppImage
-            dist/*.deb
           if-no-files-found: error
 
   release:
@@ -176,7 +192,7 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          files=(dist/*.dmg dist/*.zip dist/*.exe dist/*.AppImage dist/*.deb)
+          files=(dist/*.dmg dist/*.exe dist/*.AppImage)
           echo "::notice::待发布文件: ${files[*]:-（空）}"
           if [[ ${#files[@]} -eq 0 ]]; then
             echo "::error::dist 目录下没有找到可发布的安装包，实际内容: $(ls dist 2>&1 | tr '\n' ' ')"
