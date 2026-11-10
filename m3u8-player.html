@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>M3U8 多线程播放器</title>
+<title>M3U8 播放器</title>
 <style>
   :root {
     --bg: #070a0f;
@@ -254,7 +254,7 @@
     <div class="brand">
       <div class="mark">M3U8</div>
       <div>
-        <h1>M3U8 多线程播放器</h1>
+        <h1>M3U8 播放器</h1>
         <p>并发拉取切片 · 预取缓存 · 实时带宽与命中统计</p>
       </div>
     </div>
@@ -395,7 +395,7 @@
 
   <p class="foot">
     <b>说明：</b>切片并发下载由浏览器连接池执行，线程数即同时在途的 HTTP 请求数；预取缓存把后续切片提前下好，播放器取片段时直接命中内存，从而显著加快起播与拖拽后的缓冲。<br />
-    跨域流需要目标服务器返回 <b>Access-Control-Allow-Origin</b>，仅支持 http/https 地址；Safari 无 hls.js 时自动回退原生 HLS（此时无并发统计）。
+    跨域流需要目标服务器返回 <b>Access-Control-Allow-Origin</b>，仅支持 http/https 地址。
   </p>
 </div>
 

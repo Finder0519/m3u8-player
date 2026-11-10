@@ -79,7 +79,7 @@ function createWindow() {
     height: 820,
     minWidth: 720,
     minHeight: 560,
-    title: 'M3U8 多线程播放器',
+    title: 'M3U8 播放器',
     backgroundColor: '#070a0f',
     webPreferences: {
       // 桌面播放器核心优势：关闭 webSecurity，绕过 CORS 跨域限制，

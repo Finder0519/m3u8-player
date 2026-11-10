@@ -1,7 +1,7 @@
 {
   "name": "m3u8-player",
   "version": "1.0.2",
-  "description": "M3U8 多线程播放器桌面版",
+  "description": "M3U8 播放器桌面版",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -17,7 +17,7 @@
   },
   "build": {
     "appId": "com.m3u8.player",
-    "productName": "M3U8 多线程播放器",
+    "productName": "M3U8 播放器",
     "artifactName": "m3u8-player-${version}-${os}-${arch}.${ext}",
     "afterPack": "scripts/after-pack.js",
     "files": [
