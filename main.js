@@ -114,13 +114,7 @@ function createWindow() {
     }
   });
 
-  // 全屏时隐藏顶部菜单栏，退出全屏再恢复（Windows 上尤其明显）
-  const hideMenu = () => win.setMenuBarVisibility(false);
-  const showMenu = () => win.setMenuBarVisibility(true);
-  win.on('enter-full-screen', hideMenu);
-  win.on('leave-full-screen', showMenu);
-  win.webContents.on('enter-html-full-screen', hideMenu); // 点视频按钮进入全屏
-  win.webContents.on('leave-html-full-screen', showMenu);
+  // 菜单栏已不在窗口内显示（Windows/Linux 不设置应用菜单），无需再在全屏时切换
 
   return win;
 }
@@ -151,7 +145,8 @@ function registerIpc() {
   ipcMain.handle('ua:available', () => true);
 }
 
-// 精简菜单：保留刷新 / 开发者工具 / 缩放 / 退出，其余去掉
+// 精简菜单（仅 macOS 使用，显示在系统顶栏而非窗口内）：
+// 保留刷新 / 开发者工具 / 缩放 / 退出，其余去掉
 function buildMenu() {
   const template = [
     ...(isMac ? [{ role: 'appMenu' }] : []),
@@ -206,7 +201,13 @@ if (!gotTheLock) {
   app.whenReady().then(() => {
     loadSettings();
     registerIpc();
-    Menu.setApplicationMenu(buildMenu());
+    // Windows / Linux：不设置应用菜单，窗口顶部不再显示菜单栏；
+    // macOS：保留精简菜单（系统顶栏），否则 Cmd+C/V/X 等快捷键失效
+    if (isMac) {
+      Menu.setApplicationMenu(buildMenu());
+    } else {
+      Menu.setApplicationMenu(null);
+    }
     createWindow();
 
     app.on('activate', () => {
