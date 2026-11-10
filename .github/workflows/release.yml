@@ -1,0 +1,179 @@
+name: Release
+
+on:
+  # 在 Actions 页点 Run workflow 一键发布：版本号自动 +0.0.1、打 tag、构建并发布 Release
+  workflow_dispatch:
+  # 手动推送 v* tag 时，按该 tag 构建并发布 Release
+  push:
+    tags: ['v*']
+
+# 同一时间只跑一个发布流程，避免版本号与 Release 冲突
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: 版本号
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # 需要全部 tag 来计算下一个版本号
+          fetch-depth: 0
+
+      - name: 计算版本号并打 tag
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            # 手动推送 tag：版本号以 tag 为准
+            tag="$GITHUB_REF_NAME"
+            if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "tag $tag 不符合 vX.Y.Z 格式，已中止" >&2
+              exit 1
+            fi
+          else
+            # 一键发布：首次 v1.0.0，之后在最新 tag 上 patch +0.0.1
+            latest="$(git tag --list 'v*' --sort=-v:refname | sed -n '1p')"
+            if [[ -z "$latest" ]]; then
+              tag="v1.0.0"
+            else
+              IFS=. read -r major minor patch <<< "${latest#v}"
+              patch="${patch%%[^0-9]*}"
+              tag="v${major}.${minor}.$((patch + 1))"
+            fi
+
+            # 同步 package.json / package-lock.json 版本号（首次与 package.json 一致时无改动，跳过）并提交
+            # npm version 在版本号不变时会报错，所以先比较再执行
+            if [[ "$(node -p "require('./package.json').version")" != "${tag#v}" ]]; then
+              npm version "${tag#v}" --no-git-tag-version
+              git config user.name "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git add package.json package-lock.json
+              git commit -m "chore(release): $tag"
+            fi
+            git tag "$tag"
+            git push origin "HEAD:refs/heads/$GITHUB_REF_NAME" "refs/tags/$tag"
+          fi
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: '${{ matrix.platform }}'
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # mac：GitHub 的 arm64 runner 无法打 DMG(hdiutil 受限)，只产出 zip 免安装包
+          - os: macos-latest
+            platform: mac
+            args: '--mac zip'
+          - os: windows-latest
+            platform: win
+            args: '--win'
+          - os: ubuntu-latest
+            platform: linux
+            args: '--linux'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build for ${{ matrix.platform }}
+        shell: bash
+        env:
+          ARGS: ${{ matrix.args }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        # 先把 package.json 版本号与 tag 对齐，保证产物文件名版本一致（已一致时跳过）；
+        # --publish never 关闭 electron-builder 自带发布，统一由 release job 发布
+        run: |
+          if [[ "$(node -p "require('./package.json').version")" != "$VERSION" ]]; then
+            npm version "$VERSION" --no-git-tag-version
+          fi
+          npx electron-builder $ARGS --publish never
+
+      - name: Verify macOS app
+        if: matrix.platform == 'mac'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find dist -maxdepth 3 -type d -name '*.app' -print -quit)"
+          if [[ -z "$APP_PATH" ]]; then
+            echo "未找到打包后的 macOS .app bundle" >&2
+            exit 1
+          fi
+
+          echo "Verifying $APP_PATH"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          test -f "$APP_PATH/Contents/_CodeSignature/CodeResources"
+          plutil -extract NSLocalNetworkUsageDescription raw -o - "$APP_PATH/Contents/Info.plist"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: 'release-${{ matrix.platform }}'
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.exe
+            dist/*.AppImage
+            dist/*.deb
+          if-no-files-found: error
+
+  release:
+    name: 发布 Release
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(dist/*.dmg dist/*.zip dist/*.exe dist/*.AppImage dist/*.deb)
+          if [[ ${#files[@]} -eq 0 ]]; then
+            echo "没有找到可发布的安装包" >&2
+            exit 1
+          fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # 重跑时 Release 已存在：只补传产物
+            gh release upload "$TAG" "${files[@]}" --clobber
+          else
+            # release notes 由 GitHub 根据上个 tag 以来的提交自动生成
+            gh release create "$TAG" "${files[@]}" --verify-tag --generate-notes --title "$TAG"
+          fi
