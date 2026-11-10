@@ -150,6 +150,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      # gh 需要 git 上下文解析远端仓库，否则报 not a git repository
+      - name: Checkout
+        uses: actions/checkout@v7
+
       - name: Download artifacts
         uses: actions/download-artifact@v8
         with:
