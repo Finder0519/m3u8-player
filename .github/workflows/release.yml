@@ -1,11 +1,14 @@
 name: Release
 
 on:
-  # 在 Actions 页点 Run workflow 一键发布：版本号自动 +0.0.1、打 tag、构建并发布 Release
-  workflow_dispatch:
-  # 手动推送 v* tag 时，按该 tag 构建并发布 Release
+  # push 到 main 自动发布：版本号自动 +0.0.1、打 tag、构建并发布 Release
+  #（只改 docs/*.md 不触发；版本提交由 GITHUB_TOKEN 推送，不会循环触发）
   push:
+    branches: [main]
+    paths-ignore: ['docs/**', '*.md']
     tags: ['v*']
+  # 在 Actions 页点 Run workflow 手动发布
+  workflow_dispatch:
 
 # 同一时间只跑一个发布流程，避免版本号与 Release 冲突
 concurrency:
@@ -42,7 +45,13 @@ jobs:
               exit 1
             fi
           else
-            # 一键发布：首次 v1.0.0，之后在最新 tag 上 patch +0.0.1
+            # main 可能已前进（并发推送、上次的版本提交），先同步到最新再计算版本号
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git fetch --tags origin "$GITHUB_REF_NAME"
+            git rebase "origin/$GITHUB_REF_NAME"
+
+            # 首次 v1.0.0，之后在最新 tag 上 patch +0.0.1
             latest="$(git tag --list 'v*' --sort=-v:refname | sed -n '1p')"
             if [[ -z "$latest" ]]; then
               tag="v1.0.0"
@@ -52,12 +61,10 @@ jobs:
               tag="v${major}.${minor}.$((patch + 1))"
             fi
 
-            # 同步 package.json / package-lock.json 版本号（首次与 package.json 一致时无改动，跳过）并提交
+            # 同步 package.json / package-lock.json 版本号（无变化时跳过）并提交
             # npm version 在版本号不变时会报错，所以先比较再执行
             if [[ "$(node -p "require('./package.json').version")" != "${tag#v}" ]]; then
               npm version "${tag#v}" --no-git-tag-version
-              git config user.name "github-actions[bot]"
-              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
               git add package.json package-lock.json
               git commit -m "chore(release): $tag"
             fi
