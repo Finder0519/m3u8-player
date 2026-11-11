@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 
 const isMac = process.platform === 'darwin';
+const APP_NAME = 'M3U8 播放器'
 
 /* ============================================================
    代理配置：持久化 + 应用到会话
@@ -79,7 +80,7 @@ function createWindow() {
     height: 820,
     minWidth: 720,
     minHeight: 560,
-    title: 'M3U8 播放器',
+    title: APP_NAME,
     backgroundColor: '#070a0f',
     show: false,
     autoHideMenuBar: true,
@@ -157,62 +158,53 @@ function buildMenu() {
   const template = [
     // 应用菜单（macOS 特有，靠近程序名字/关于/退出都在这里）
     {
-      label: 'M3U8 播放器',
+      label: APP_NAME,
       submenu: [
-        { role: 'about', label: '关于 M3U8 播放器' },
+        { label: `关于 ${APP_NAME}`, role: 'about', submenu: [] },
         { type: 'separator' },
-        { role: 'services', label: '服务' },
+        { label: `隐藏 ${APP_NAME}`, role: 'hide' },
+        { label: '隐藏其他', role: 'hideOthers' },
         { type: 'separator' },
-        { role: 'hide', label: '隐藏 M3U8 播放器' },
-        { role: 'hideOthers', label: '隐藏其他' },
-        { role: 'unhide', label: '全部显示' },
-        { type: 'separator' },
-        { role: 'quit', label: '退出 M3U8 播放器' }
-      ]
-    },
-    // 文件
-    {
-      label: '文件',
-      submenu: [
-        { role: 'close', label: '关闭窗口' }
+        { label: `退出 ${APP_NAME}`, role: 'quit' }
       ]
     },
     // 编辑（必须有，Cmd+C/V/X、右键复制粘贴才生效）
     {
       label: '编辑',
       submenu: [
-        { role: 'undo', label: '撤销' },
-        { role: 'redo', label: '重做' },
+        { label: '撤销', role: 'undo' },
+        { label: '重做', role: 'redo' },
         { type: 'separator' },
-        { role: 'cut', label: '剪切' },
-        { role: 'copy', label: '复制' },
-        { role: 'paste', label: '粘贴' },
-        { role: 'selectAll', label: '全选' }
+        { label: '剪切', role: 'cut' },
+        { label: '复制', role: 'copy' },
+        { label: '粘贴', role: 'paste' },
+        { label: '全选', role: 'selectAll' }
       ]
     },
-    // 查看
+    // 视图
     {
-      label: '查看',
+      label: '视图',
       submenu: [
-        { role: 'reload', label: '重新载入' },
-        { role: 'forceReload', label: '强制重新载入' },
-        { role: 'toggleDevTools', label: '开发者工具' },
+        { label: '重新加载', role: 'reload' },
+        { label: '强制重新加载', role: 'forceReload' },
+        { label: '开发者工具', role: 'toggleDevTools' },
         { type: 'separator' },
-        { role: 'resetZoom', label: '实际大小' },
-        { role: 'zoomIn', label: '放大' },
-        { role: 'zoomOut', label: '缩小' },
+        { label: '实际大小', role: 'resetZoom' },
+        { label: '放大', role: 'zoomIn' },
+        { label: '缩小', role: 'zoomOut' },
         { type: 'separator' },
-        { role: 'togglefullscreen', label: '切换全屏' }
+        { label: '切换全屏', role: 'togglefullscreen' }
       ]
     },
     // 窗口（提供 Cmd+M 最小化、Cmd+` 切换窗口等快捷键）
     {
       label: '窗口',
       submenu: [
-        { role: 'minimize', label: '最小化' },
-        { role: 'zoom', label: '缩放' },
+        { label: '最小化', role: 'minimize' },
+        { label: '缩放', role: 'zoom' },
+        { label: '关闭', role: 'close' },
         { type: 'separator' },
-        { role: 'front', label: '前置全部窗口' }
+        { label: '前置全部窗口', role: 'front' }
       ]
     }
   ];
