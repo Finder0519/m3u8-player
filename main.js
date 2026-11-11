@@ -81,6 +81,8 @@ function createWindow() {
     minHeight: 560,
     title: 'M3U8 播放器',
     backgroundColor: '#070a0f',
+    show: false,
+    autoHideMenuBar: true,
     webPreferences: {
       // 桌面播放器核心优势：关闭 webSecurity，绕过 CORS 跨域限制，
       // 让几乎所有 m3u8 源都能直接播放（网页版会因缺少
@@ -93,6 +95,9 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js')
     }
   });
+
+  // 页面加载完成后再显示窗口，避免白屏闪烁（与 webdav-browser 一致）
+  win.on('ready-to-show', () => win.show());
 
   // 把已保存的代理、UA 应用到本窗口会话
   applyProxyTo(win.webContents.session, proxy);
@@ -145,18 +150,34 @@ function registerIpc() {
   ipcMain.handle('ua:available', () => true);
 }
 
-// 精简菜单（仅 macOS 使用，显示在系统顶栏而非窗口内）：
-// 保留刷新 / 开发者工具 / 缩放 / 退出，其余去掉
+// macOS 应用菜单：接近 Electron 默认完整菜单，但全部中文。
+// 子项用 role 声明，Electron 会自动绑定快捷键（Cmd+C/V/X 等）。
+// 仅 macOS 使用（显示在系统顶栏），Windows/Linux 由 autoHideMenuBar 隐藏。
 function buildMenu() {
   const template = [
-    ...(isMac ? [{ role: 'appMenu' }] : []),
+    // 应用菜单（macOS 特有，靠近程序名字/关于/退出都在这里）
+    {
+      label: 'M3U8 播放器',
+      submenu: [
+        { role: 'about', label: '关于 M3U8 播放器' },
+        { type: 'separator' },
+        { role: 'services', label: '服务' },
+        { type: 'separator' },
+        { role: 'hide', label: '隐藏 M3U8 播放器' },
+        { role: 'hideOthers', label: '隐藏其他' },
+        { role: 'unhide', label: '全部显示' },
+        { type: 'separator' },
+        { role: 'quit', label: '退出 M3U8 播放器' }
+      ]
+    },
+    // 文件
     {
       label: '文件',
       submenu: [
-        { role: 'quit', label: '退出' }
+        { role: 'close', label: '关闭窗口' }
       ]
     },
-    // macOS 必须要有「编辑」菜单，Cmd+C/V/X、右键复制粘贴的快捷键才会生效
+    // 编辑（必须有，Cmd+C/V/X、右键复制粘贴才生效）
     {
       label: '编辑',
       submenu: [
@@ -169,15 +190,29 @@ function buildMenu() {
         { role: 'selectAll', label: '全选' }
       ]
     },
+    // 查看
     {
       label: '查看',
       submenu: [
-        { role: 'reload', label: '刷新' },
+        { role: 'reload', label: '重新载入' },
+        { role: 'forceReload', label: '强制重新载入' },
         { role: 'toggleDevTools', label: '开发者工具' },
         { type: 'separator' },
         { role: 'resetZoom', label: '实际大小' },
         { role: 'zoomIn', label: '放大' },
-        { role: 'zoomOut', label: '缩小' }
+        { role: 'zoomOut', label: '缩小' },
+        { type: 'separator' },
+        { role: 'togglefullscreen', label: '切换全屏' }
+      ]
+    },
+    // 窗口（提供 Cmd+M 最小化、Cmd+` 切换窗口等快捷键）
+    {
+      label: '窗口',
+      submenu: [
+        { role: 'minimize', label: '最小化' },
+        { role: 'zoom', label: '缩放' },
+        { type: 'separator' },
+        { role: 'front', label: '前置全部窗口' }
       ]
     }
   ];
@@ -201,12 +236,10 @@ if (!gotTheLock) {
   app.whenReady().then(() => {
     loadSettings();
     registerIpc();
-    // Windows / Linux：不设置应用菜单，窗口顶部不再显示菜单栏；
-    // macOS：保留精简菜单（系统顶栏），否则 Cmd+C/V/X 等快捷键失效
+    // macOS：应用菜单显示在系统顶栏，这里用构建好的中文完整菜单；
+    // Windows/Linux：不设置自定义菜单，用默认菜单 + autoHideMenuBar 隐藏。
     if (isMac) {
       Menu.setApplicationMenu(buildMenu());
-    } else {
-      Menu.setApplicationMenu(null);
     }
     createWindow();
 
