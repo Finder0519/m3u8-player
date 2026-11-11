@@ -113,6 +113,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build with electron-vite
+        run: npm run build
+
       - name: Build for ${{ matrix.platform }}
         shell: bash
         env:
