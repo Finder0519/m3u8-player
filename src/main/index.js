@@ -92,7 +92,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       spellcheck: false,
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, '../preload/index.js')
     }
   });
 
@@ -104,7 +104,7 @@ function createWindow() {
   applyUaTo(win.webContents.session, ua);
 
   // 加载已有的播放器页面（保持单一源码，避免复制一份导致不同步）
-  const page = path.join(__dirname, 'm3u8-player.html');
+  const page = path.join(__dirname, '../../m3u8-player.html');
   win.loadFile(page);
 
   // 拦截打开新窗口/外链：一律丢给系统浏览器，避免在窗口里乱跳

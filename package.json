@@ -2,18 +2,21 @@
   "name": "m3u8-player",
   "version": "1.0.6",
   "description": "M3U8 播放器桌面版",
-  "main": "main.js",
+  "main": "./out/main/index.js",
   "scripts": {
-    "start": "electron .",
-    "dev": "electron .",
-    "dist": "electron-builder",
-    "pack": "electron-builder --dir"
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "dist": "npm run build && electron-builder",
+    "pack": "npm run build && electron-builder --dir"
   },
   "author": "finder0519-mac",
   "license": "MIT",
   "devDependencies": {
-    "electron": "33.4.11",
-    "electron-builder": "^25.0.0"
+    "electron": "45.3.0",
+    "electron-builder": "^25.0.0",
+    "electron-vite": "^6.0.0",
+    "vite": "^8.3.7"
   },
   "build": {
     "appId": "com.m3u8.player",
@@ -21,8 +24,8 @@
     "artifactName": "m3u8-player-${version}-${os}-${arch}.${ext}",
     "afterPack": "scripts/after-pack.js",
     "files": [
-      "main.js",
-      "preload.js",
+      "out/main/**",
+      "out/preload/**",
       "m3u8-player.html",
       "js/**/*.js"
     ],
@@ -50,6 +53,6 @@
     }
   },
   "allowScripts": {
-    "electron@33.4.11": true
+    "electron@45.3.0": true
   }
 }
