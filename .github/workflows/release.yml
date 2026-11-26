@@ -85,20 +85,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # mac：arm64/x64 各打一个 DMG，统一在 arm64 runner 上构建（x64 交叉打包），
-          # 使 dmg 走 APFS 镜像路径，规避 macOS 26.4+ 的 HFS+ 挂载故障（electron-builder#9615）
+          # 只发布 macOS arm64（DMG）和 Windows（NSIS exe）两个平台：
+          # 原生 arm64 runner 构建，dmg 走 APFS 镜像路径，规避 macOS 26.4+
+          # 的 HFS+ 挂载故障（electron-builder#9615）
           - os: macos-latest
             platform: mac-arm64
             args: '--mac dmg --arm64'
-          - os: macos-latest
-            platform: mac-x64
-            args: '--mac dmg --x64'
           - os: windows-latest
             platform: win
             args: '--win nsis'
-          - os: ubuntu-latest
-            platform: linux
-            args: '--linux appimage'
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -166,7 +161,6 @@ jobs:
           path: |
             dist/*.dmg
             dist/*.exe
-            dist/*.AppImage
           if-no-files-found: error
 
   release:
@@ -195,7 +189,7 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          files=(dist/*.dmg dist/*.exe dist/*.AppImage)
+          files=(dist/*.dmg dist/*.exe)
           echo "::notice::待发布文件: ${files[*]:-（空）}"
           if [[ ${#files[@]} -eq 0 ]]; then
             echo "::error::dist 目录下没有找到可发布的安装包，实际内容: $(ls dist 2>&1 | tr '\n' ' ')"

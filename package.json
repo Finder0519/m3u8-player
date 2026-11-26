@@ -44,12 +44,6 @@
         "nsis"
       ],
       "icon": "build/icon.ico"
-    },
-    "linux": {
-      "target": [
-        "AppImage"
-      ],
-      "icon": "build/icon_rounded.png"
     }
   },
   "allowScripts": {
