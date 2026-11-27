@@ -12,29 +12,34 @@
   /* ============================================================
      网络代理（仅 Electron 桌面版可用）
      ============================================================ */
-  const proxyFields = ['proxyType', 'proxyHost', 'proxyPort', 'proxyUser', 'proxyPass'];
-  const systemModeId = 'proxySystemToggle';
-
-  function proxyStatusEl() { return $('proxyStatus'); }
+  const customFieldIds = ['proxyType', 'proxyHost', 'proxyPort', 'proxyUser', 'proxyPass'];
+  const modeButtons = () => Array.from(document.querySelectorAll('#proxyMode .seg-item'));
 
   function setProxyStatus(text, on) {
-    const el = proxyStatusEl();
+    const el = $('proxyStatus');
     el.textContent = text;
     el.className = 'p-status' + (on ? ' on' : '');
   }
 
-  // 切换「跟随系统代理」：开启时禁用自定义代理表单
+  function currentMode() {
+    const active = modeButtons().find((btn) => btn.classList.contains('on'));
+    return active ? active.dataset.mode : 'system';
+  }
+
+  // 切换模式：更新选中态；只有「自定义」才允许编辑代理表单
   function setProxyMode(mode) {
-    const system = mode === 'system';
-    $(systemModeId).classList.toggle('on', system);
-    proxyFields.forEach((id) => { $(id).disabled = system; });
+    modeButtons().forEach((btn) => {
+      const on = btn.dataset.mode === mode;
+      btn.classList.toggle('on', on);
+      btn.setAttribute('aria-checked', on ? 'true' : 'false');
+    });
+    customFieldIds.forEach((id) => { $(id).disabled = mode !== 'custom'; });
   }
 
   // 读取当前表单值
   function readProxyForm() {
     return {
-      enabled: false,
-      mode: $(systemModeId).classList.contains('on') ? 'system' : 'custom',
+      mode: currentMode(),
       type: $('proxyType').value,
       host: ($('proxyHost').value || '').trim(),
       port: Number($('proxyPort').value) || 0,
@@ -43,12 +48,21 @@
     };
   }
 
+  // 与主进程一致的生效状态文案（自定义模式没填主机时主进程会退回直连）
+  function statusFor(cfg) {
+    if (cfg.mode === 'system') return { text: '已启用 · 跟随系统设置', on: true };
+    if (cfg.mode === 'custom' && cfg.host) {
+      return { text: '已启用 · ' + String(cfg.type || 'http').toUpperCase(), on: true };
+    }
+    return { text: '直连 · 不使用代理', on: false };
+  }
+
   // 校验并提交到主进程
   async function applyProxy() {
     const cfg = readProxyForm();
     if (cfg.mode === 'custom') {
       if (!cfg.host) {
-        log('代理：请先填写主机地址', 'warn');
+        log('代理：自定义模式下请先填写主机地址', 'warn');
         return;
       }
       if (!(cfg.port >= 1 && cfg.port <= 65535)) {
@@ -56,36 +70,37 @@
         return;
       }
     }
-    cfg.enabled = true;
-    const label = cfg.mode === 'system' ? '跟随系统' : cfg.type.toUpperCase();
     try {
       await window.proxyApi.setProxy(cfg);
-      setProxyStatus('已启用 · ' + label);
-      log(cfg.mode === 'system'
-        ? '代理已启用：跟随系统设置'
-        : '代理已应用：' + cfg.type + '://' + cfg.host + ':' + cfg.port, 'ok');
+      const st = statusFor(cfg);
+      setProxyStatus(st.text, st.on);
+      if (cfg.mode === 'direct') {
+        log('代理已关闭：直接连接');
+      } else if (cfg.mode === 'system') {
+        log('代理已启用：跟随系统设置');
+      } else {
+        log('代理已应用：' + cfg.type + '://' + cfg.host + ':' + cfg.port, 'ok');
+      }
     } catch (e) {
       setProxyStatus('应用失败', false);
       log('代理应用失败：' + (e && e.message || e), 'err');
     }
   }
 
-  // 关闭代理
-  async function clearProxy() {
-    try {
-      await window.proxyApi.setProxy({ enabled: false });
-      setProxyStatus('已关闭', false);
-      log('代理已关闭，恢复直连');
-    } catch (e) {
-      log('关闭代理失败：' + (e && e.message || e), 'err');
-    }
-  }
-
-  $('proxyApply').addEventListener('click', applyProxy);
-  $('proxyClear').addEventListener('click', clearProxy);
-  $(systemModeId).addEventListener('click', () => {
-    setProxyMode($(systemModeId).classList.contains('on') ? 'custom' : 'system');
+  modeButtons().forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const mode = btn.dataset.mode;
+      if (mode === currentMode()) return;
+      setProxyMode(mode);
+      // 直连与跟随系统不需要额外输入，选中即生效；自定义填完表单再点「应用设置」
+      if (mode === 'custom') {
+        log('代理：填写自定义参数后点「应用设置」生效');
+      } else {
+        applyProxy();
+      }
+    });
   });
+  $('proxyApply').addEventListener('click', applyProxy);
   // 按回车快捷应用
   ['proxyType', 'proxyHost', 'proxyPort'].forEach((id) => {
     $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') applyProxy(); });
@@ -93,31 +108,29 @@
 
   // 非桌面环境（直接用浏览器打开页面）时，代理走不了主进程，禁用该功能
   if (!window.proxyApi) {
-    setProxyStatus('仅桌面版可用');
+    setProxyStatus('仅桌面版可用', false);
     $('proxyApply').disabled = true;
-    $('proxyClear').disabled = true;
-    $(systemModeId).disabled = true;
+    modeButtons().forEach((btn) => { btn.disabled = true; });
   }
 
   // 启动时把已保存的代理配置同步回表单（让页面值与真实生效的代理一致）
   if (window.proxyApi) {
+    $('proxyHint').textContent = '仅影响本应用';
     window.proxyApi.getProxy().then((saved) => {
       if (!saved) return;
-      setProxyMode(saved.mode === 'system' ? 'system' : 'custom');
+      // 兼容旧配置：只有 enabled 时按主进程同样的规则推断模式
+      let mode = saved.mode;
+      if (mode !== 'direct' && mode !== 'system' && mode !== 'custom') {
+        mode = saved.enabled === false ? 'direct' : (saved.host ? 'custom' : 'system');
+      }
+      setProxyMode(mode);
       $('proxyType').value = saved.type === 'socks5' ? 'socks5' : 'http';
       $('proxyHost').value = saved.host || '';
       $('proxyPort').value = saved.port || '';
       $('proxyUser').value = saved.user || '';
       $('proxyPass').value = saved.pass || '';
-      if (!saved.enabled) {
-        setProxyStatus('已关闭', false);
-      } else if (saved.mode === 'system') {
-        setProxyStatus('已启用 · 跟随系统', true);
-      } else if (saved.host) {
-        setProxyStatus('已启用 · ' + saved.type.toUpperCase(), true);
-      } else {
-        setProxyStatus('已关闭', false);
-      }
+      const st = statusFor({ mode, type: saved.type, host: saved.host });
+      setProxyStatus(st.text, st.on);
     }).catch(() => {});
   }
 

@@ -184,6 +184,15 @@
   .toggle.on::after { transform: translateX(18px); background: var(--accent); }
 
   /* ---------- 网络代理 ---------- */
+  .seg { display: flex; gap: 4px; padding: 3px; margin-bottom: 12px; background: #070c13; border: 1px solid var(--line); border-radius: 10px; }
+  .seg-item {
+    flex: 1; height: 30px; padding: 0 4px; border-radius: 7px;
+    background: transparent; color: var(--muted); font-size: 12px; white-space: nowrap;
+    transition: background .15s, color .15s, box-shadow .15s;
+  }
+  .seg-item:hover:not(.on):not(:disabled) { color: var(--text); }
+  .seg-item.on { background: rgba(34, 211, 238, .14); color: var(--accent); font-weight: 600; box-shadow: inset 0 0 0 1px rgba(34, 211, 238, .35); }
+  .seg-item:disabled { opacity: .4; cursor: not-allowed; }
   .proxy-type { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
   .proxy-type select { max-width: 140px; }
   .p-status { font-size: 11.5px; margin-left: auto; color: var(--muted); }
@@ -326,16 +335,17 @@
 
       <div class="card" id="proxyCard">
         <div class="card-head">网络代理 <span class="hint" id="proxyHint">仅桌面版可用</span></div>
+        <div class="seg" id="proxyMode" role="radiogroup" aria-label="代理模式">
+          <button type="button" class="seg-item" data-mode="direct" role="radio" aria-checked="false">不使用代理</button>
+          <button type="button" class="seg-item on" data-mode="system" role="radio" aria-checked="true">跟随系统设置</button>
+          <button type="button" class="seg-item" data-mode="custom" role="radio" aria-checked="false">自定义</button>
+        </div>
         <div class="proxy-type">
           <select id="proxyType" disabled>
             <option value="http" selected>HTTP</option>
             <option value="socks5">SOCKS5</option>
           </select>
-          <span class="p-status on" id="proxyStatus">已启用 · 跟随系统</span>
-        </div>
-        <div class="switch">
-          <span>跟随系统代理</span>
-          <button class="toggle on" id="proxySystemToggle" aria-label="跟随系统代理"></button>
+          <span class="p-status on" id="proxyStatus">已启用 · 跟随系统设置</span>
         </div>
         <div class="proxy-grid">
           <div>
@@ -358,8 +368,7 @@
           </div>
         </div>
         <div class="proxy-actions">
-          <button id="proxyApply" class="primary">应用代理</button>
-          <button id="proxyClear" class="ghost">关闭代理</button>
+          <button id="proxyApply" class="primary">应用设置</button>
         </div>
       </div>
 

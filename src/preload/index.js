@@ -11,8 +11,8 @@ contextBridge.exposeInMainWorld('uaApi', {
 });
 
 contextBridge.exposeInMainWorld('proxyApi', {
-  // 设置代理；cfg: { enabled, mode, type, host, port, user, pass }
-  // mode='custom' 使用下方指定代理，mode='system' 跟随系统代理；enabled=false 时清除代理
+  // 设置代理；cfg: { mode, type, host, port, user, pass }
+  // mode：direct 不使用代理 / system 跟随系统设置 / custom 使用下方指定的 HTTP 或 SOCKS5
   setProxy: (cfg) => ipcRenderer.invoke('proxy:set', cfg),
   // 读取已保存的代理配置（用于启动时回填表单）
   getProxy: () => ipcRenderer.invoke('proxy:get'),

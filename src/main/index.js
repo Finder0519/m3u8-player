@@ -10,22 +10,43 @@ const APP_NAME = 'M3U8 播放器'
    ============================================================ */
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 
-// 默认跟随系统代理；用户可切换为直连或自定义代理
-let proxy = { enabled: true, mode: 'system', type: 'http', host: '', port: 7890, user: '', pass: '' };
+// 代理三档：direct 不使用代理 / system 跟随系统设置（默认）/ custom 自定义 HTTP 或 SOCKS5
+const PROXY_MODES = ['direct', 'system', 'custom'];
+let proxy = { mode: 'system', type: 'http', host: '', port: 7890, user: '', pass: '' };
 
 // 自定义 UA：默认模仿 Windows Chrome（应对防盗链流）
 const DEFAULT_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36';
 let ua = { enabled: true, value: DEFAULT_UA }; // 默认启用，启动即用 Windows Chrome UA 拉流
 
+// 校验并补齐代理配置：模式、类型、端口都收敛到可用范围
+function normalizeProxy(cfg) {
+  const merged = Object.assign({}, proxy, cfg || {});
+  const out = {
+    mode: PROXY_MODES.includes(merged.mode) ? merged.mode : 'system',
+    type: merged.type === 'socks5' ? 'socks5' : 'http',
+    host: typeof merged.host === 'string' ? merged.host.trim() : '',
+    port: Number(merged.port) || 0,
+    user: typeof merged.user === 'string' ? merged.user : '',
+    pass: typeof merged.pass === 'string' ? merged.pass : ''
+  };
+  return out;
+}
+
 function loadSettings() {
   try {
     const raw = fs.readFileSync(settingsFile(), 'utf-8');
     const saved = JSON.parse(raw);
     if (saved && typeof saved.proxy === 'object') {
-      proxy = Object.assign(proxy, saved.proxy);
-      // 旧版本配置没有 mode 字段：填过主机地址的视为自定义代理，避免被新默认值覆盖
-      if (!saved.proxy.mode && saved.proxy.host) proxy.mode = 'custom';
+      const sp = saved.proxy;
+      // 兼容旧配置：enabled=false（旧版「关闭代理」）一律视为直连；
+      // 没有 mode 的旧配置里，填过主机地址的视为自定义，其余跟随系统
+      if (sp.enabled === false) {
+        sp.mode = 'direct';
+      } else if (!PROXY_MODES.includes(sp.mode)) {
+        sp.mode = sp.host ? 'custom' : 'system';
+      }
+      proxy = normalizeProxy(sp);
     }
     if (saved && typeof saved.ua === 'object') {
       ua = Object.assign(ua, saved.ua);
@@ -40,27 +61,29 @@ function saveSettings() {
   } catch (e) { /* 忽略 */ }
 }
 
-// 把代理配置变成 Chromium 的 proxyRules 字符串
+// 把代理配置变成 Chromium 的 proxyRules 字符串；地址或端口无效时返回空串
 function buildProxyRules(cfg) {
-  if (!cfg.host) return '';
+  if (!cfg.host || !(cfg.port >= 1 && cfg.port <= 65535)) return '';
   const scheme = cfg.type === 'socks5' ? 'socks5' : 'http';
   const auth = cfg.user && cfg.pass ? `${encodeURIComponent(cfg.user)}:${encodeURIComponent(cfg.pass)}@` : '';
   return `${scheme}://${auth}${cfg.host}:${cfg.port}`;
 }
 
-// 把一个窗口的会话切到「直连」「跟随系统代理」或「指定代理」
+// 把一个窗口的会话切到「直连」「跟随系统设置」或「自定义代理」
 function applyProxyTo(ses, cfg) {
-  if (!cfg.enabled) {
-    ses.setProxy({ mode: 'direct' }, () => {});
-    return;
-  }
   if (cfg.mode === 'system') {
     ses.setProxy({ mode: 'system' }, () => {});
     return;
   }
-  const rules = buildProxyRules(cfg);
-  const mode = rules ? 'fixed_servers' : 'direct';
-  ses.setProxy({ mode, ...(rules ? { proxyRules: rules } : {}) }, () => {});
+  if (cfg.mode === 'custom') {
+    const rules = buildProxyRules(cfg);
+    // 自定义模式没填主机时退回直连，避免留下一个失效的代理规则
+    if (rules) {
+      ses.setProxy({ mode: 'fixed_servers', proxyRules: rules }, () => {});
+      return;
+    }
+  }
+  ses.setProxy({ mode: 'direct' }, () => {});
 }
 
 // 自定义 UA：用 webRequest 改写所有请求（含页面里的并发 fetch 拉流）的 User-Agent 头
@@ -135,7 +158,7 @@ function createWindow() {
    ============================================================ */
 function registerIpc() {
   ipcMain.handle('proxy:set', (event, cfg) => {
-    proxy = Object.assign({}, proxy, cfg || {});
+    proxy = normalizeProxy(cfg);
     saveSettings();
     const win = BrowserWindow.fromWebContents(event.sender);
     if (win) applyProxyTo(win.webContents.session, proxy);
