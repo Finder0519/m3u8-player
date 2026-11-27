@@ -26,7 +26,7 @@ npm run dist    # 打包当前平台安装包：macOS 出 DMG，Windows 出 NSIS
 - 创建唯一窗口，`webPreferences` 中 `webSecurity: false`，这是桌面版能播「缺少 CORS 头」的 m3u8 源的根本原因；`nodeIntegration: false` + `contextIsolation: true`。
 - 实际加载的是仓库根目录的 `m3u8-player.html`（`win.loadFile`），不是 `src/renderer/`。
 - 代理与 UA 配置持久化在 `app.getPath('userData')/settings.json`，启动时 `loadSettings()` 读回，通过 `session.setProxy` / `webRequest.onBeforeSendHeaders` 应用到窗口会话。渲染进程只负责表单，不持有配置。
-- 外链一律 `shell.openExternal`，单实例锁，macOS 使用中文应用菜单。
+- 外链一律 `shell.openExternal`，单实例锁，各平台统一使用中文应用菜单（macOS 显示在系统顶栏，Windows/Linux 由 `autoHideMenuBar` 收起、按 Alt 弹出）。
 
 ### 2. 预加载 `src/preload/index.js`
 

@@ -120,7 +120,7 @@ function createWindow() {
     }
   });
 
-  // 菜单栏已不在窗口内显示（Windows/Linux 不设置应用菜单），无需再在全屏时切换
+  // Windows/Linux 的菜单栏由 autoHideMenuBar 收起，无需在全屏时切换
 
   return win;
 }
@@ -151,13 +151,15 @@ function registerIpc() {
   ipcMain.handle('ua:available', () => true);
 }
 
-// macOS 应用菜单：接近 Electron 默认完整菜单，但全部中文。
+// 应用菜单：接近 Electron 默认完整菜单，但全部中文。
 // 子项用 role 声明，Electron 会自动绑定快捷键（Cmd+C/V/X 等）。
-// 仅 macOS 使用（显示在系统顶栏），Windows/Linux 由 autoHideMenuBar 隐藏。
+// 平台差异只体现在「应用菜单」和「窗口」菜单上，其余共用。
 function buildMenu() {
-  const template = [
-    // 应用菜单（macOS 特有，靠近程序名字/关于/退出都在这里）
-    {
+  const template = [];
+
+  // 应用菜单（macOS 特有，靠近程序名字/关于/退出都在这里）
+  if (isMac) {
+    template.push({
       label: APP_NAME,
       submenu: [
         { label: `关于 ${APP_NAME}`, role: 'about' },
@@ -167,47 +169,62 @@ function buildMenu() {
         { type: 'separator' },
         { label: `退出 ${APP_NAME}`, role: 'quit' }
       ]
-    },
-    // 编辑（必须有，Cmd+C/V/X、右键复制粘贴才生效）
-    {
-      label: '编辑',
-      submenu: [
-        { label: '撤销', role: 'undo' },
-        { label: '重做', role: 'redo' },
-        { type: 'separator' },
-        { label: '剪切', role: 'cut' },
-        { label: '复制', role: 'copy' },
-        { label: '粘贴', role: 'paste' },
-        { label: '全选', role: 'selectAll' }
-      ]
-    },
-    // 视图
-    {
-      label: '视图',
-      submenu: [
-        { label: '重新加载', role: 'reload' },
-        { label: '强制重新加载', role: 'forceReload' },
-        { label: '开发者工具', role: 'toggleDevTools' },
-        { type: 'separator' },
-        { label: '实际大小', role: 'resetZoom' },
-        { label: '放大', role: 'zoomIn' },
-        { label: '缩小', role: 'zoomOut' },
-        { type: 'separator' },
-        { label: '切换全屏', role: 'togglefullscreen' }
-      ]
-    },
-    // 窗口（提供 Cmd+M 最小化、Cmd+` 切换窗口等快捷键）
-    {
-      label: '窗口',
-      submenu: [
-        { label: '最小化', role: 'minimize' },
-        { label: '缩放', role: 'zoom' },
-        { label: '关闭', role: 'close' },
-        { type: 'separator' },
-        { label: '前置全部窗口', role: 'front' }
-      ]
-    }
-  ];
+    });
+  } else {
+    // Windows/Linux 没有系统级应用菜单，退出按平台惯例放进「文件」
+    template.push({
+      label: '文件',
+      submenu: [{ label: '退出', role: 'quit' }]
+    });
+  }
+
+  // 编辑（必须有，Cmd+C/V/X、右键复制粘贴才生效）
+  template.push({
+    label: '编辑',
+    submenu: [
+      { label: '撤销', role: 'undo' },
+      { label: '重做', role: 'redo' },
+      { type: 'separator' },
+      { label: '剪切', role: 'cut' },
+      { label: '复制', role: 'copy' },
+      { label: '粘贴', role: 'paste' },
+      { label: '全选', role: 'selectAll' }
+    ]
+  });
+
+  // 视图
+  template.push({
+    label: '视图',
+    submenu: [
+      { label: '重新加载', role: 'reload' },
+      { label: '强制重新加载', role: 'forceReload' },
+      { label: '开发者工具', role: 'toggleDevTools' },
+      { type: 'separator' },
+      { label: '实际大小', role: 'resetZoom' },
+      { label: '放大', role: 'zoomIn' },
+      { label: '缩小', role: 'zoomOut' },
+      { type: 'separator' },
+      { label: '切换全屏', role: 'togglefullscreen' }
+    ]
+  });
+
+  // 窗口：macOS 的 zoom / front 角色仅在 macOS 生效，Windows 只保留最小化和关闭
+  template.push({
+    label: '窗口',
+    submenu: isMac
+      ? [
+          { label: '最小化', role: 'minimize' },
+          { label: '缩放', role: 'zoom' },
+          { label: '关闭', role: 'close' },
+          { type: 'separator' },
+          { label: '前置全部窗口', role: 'front' }
+        ]
+      : [
+          { label: '最小化', role: 'minimize' },
+          { label: '关闭', role: 'close' }
+        ]
+  });
+
   return Menu.buildFromTemplate(template);
 }
 
@@ -228,11 +245,9 @@ if (!gotTheLock) {
   app.whenReady().then(() => {
     loadSettings();
     registerIpc();
-    // macOS：应用菜单显示在系统顶栏，这里用构建好的中文完整菜单；
-    // Windows/Linux：不设置自定义菜单，用默认菜单 + autoHideMenuBar 隐藏。
-    if (isMac) {
-      Menu.setApplicationMenu(buildMenu());
-    }
+    // 所有平台统一使用中文菜单：macOS 显示在系统顶栏，
+    // Windows/Linux 默认由 autoHideMenuBar 收起，按 Alt 弹出。
+    Menu.setApplicationMenu(buildMenu());
     createWindow();
 
     app.on('activate', () => {
