@@ -109,8 +109,14 @@
       $('proxyPort').value = saved.port || '';
       $('proxyUser').value = saved.user || '';
       $('proxyPass').value = saved.pass || '';
-      if (saved.enabled && (saved.mode === 'system' || saved.host)) {
-        setProxyStatus('已启用 · ' + (saved.mode === 'system' ? '跟随系统' : saved.type.toUpperCase()));
+      if (!saved.enabled) {
+        setProxyStatus('已关闭', false);
+      } else if (saved.mode === 'system') {
+        setProxyStatus('已启用 · 跟随系统', true);
+      } else if (saved.host) {
+        setProxyStatus('已启用 · ' + saved.type.toUpperCase(), true);
+      } else {
+        setProxyStatus('已关闭', false);
       }
     }).catch(() => {});
   }

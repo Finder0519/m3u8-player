@@ -327,34 +327,34 @@
       <div class="card" id="proxyCard">
         <div class="card-head">网络代理 <span class="hint" id="proxyHint">仅桌面版可用</span></div>
         <div class="proxy-type">
-          <select id="proxyType">
+          <select id="proxyType" disabled>
             <option value="http" selected>HTTP</option>
             <option value="socks5">SOCKS5</option>
           </select>
-          <span class="p-status" id="proxyStatus">已关闭</span>
+          <span class="p-status on" id="proxyStatus">已启用 · 跟随系统</span>
         </div>
         <div class="switch">
           <span>跟随系统代理</span>
-          <button class="toggle" id="proxySystemToggle" aria-label="跟随系统代理"></button>
+          <button class="toggle on" id="proxySystemToggle" aria-label="跟随系统代理"></button>
         </div>
         <div class="proxy-grid">
           <div>
             <label class="proxy-row-label" for="proxyHost">主机</label>
-            <input id="proxyHost" type="text" value="127.0.0.1" placeholder="127.0.0.1 或 example.com" />
+            <input id="proxyHost" type="text" value="127.0.0.1" placeholder="127.0.0.1 或 example.com" disabled />
           </div>
           <div>
             <label class="proxy-row-label" for="proxyPort">端口</label>
-            <input id="proxyPort" type="number" min="0" max="65535" value="7897" placeholder="7897" />
+            <input id="proxyPort" type="number" min="0" max="65535" value="7897" placeholder="7897" disabled />
           </div>
         </div>
         <div class="proxy-grid">
           <div>
             <label class="proxy-row-label" for="proxyUser">用户名（可选）</label>
-            <input id="proxyUser" type="text" placeholder="留空表示无鉴权" />
+            <input id="proxyUser" type="text" placeholder="留空表示无鉴权" disabled />
           </div>
           <div>
             <label class="proxy-row-label" for="proxyPass">密码（可选）</label>
-            <input id="proxyPass" type="password" placeholder="••••••" />
+            <input id="proxyPass" type="password" placeholder="••••••" disabled />
           </div>
         </div>
         <div class="proxy-actions">

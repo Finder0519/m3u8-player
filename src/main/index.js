@@ -10,7 +10,8 @@ const APP_NAME = 'M3U8 播放器'
    ============================================================ */
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 
-let proxy = { enabled: false, mode: 'custom', type: 'http', host: '', port: 7890, user: '', pass: '' };
+// 默认跟随系统代理；用户可切换为直连或自定义代理
+let proxy = { enabled: true, mode: 'system', type: 'http', host: '', port: 7890, user: '', pass: '' };
 
 // 自定义 UA：默认模仿 Windows Chrome（应对防盗链流）
 const DEFAULT_UA =
@@ -21,7 +22,11 @@ function loadSettings() {
   try {
     const raw = fs.readFileSync(settingsFile(), 'utf-8');
     const saved = JSON.parse(raw);
-    if (saved && typeof saved.proxy === 'object') proxy = Object.assign(proxy, saved.proxy);
+    if (saved && typeof saved.proxy === 'object') {
+      proxy = Object.assign(proxy, saved.proxy);
+      // 旧版本配置没有 mode 字段：填过主机地址的视为自定义代理，避免被新默认值覆盖
+      if (!saved.proxy.mode && saved.proxy.host) proxy.mode = 'custom';
+    }
     if (saved && typeof saved.ua === 'object') {
       ua = Object.assign(ua, saved.ua);
       if (!ua.value) ua.value = DEFAULT_UA;
