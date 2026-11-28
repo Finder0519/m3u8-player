@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, shell, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -179,83 +179,6 @@ function registerIpc() {
   ipcMain.handle('ua:available', () => true);
 }
 
-// 应用菜单：接近 Electron 默认完整菜单，但全部中文。
-// 子项用 role 声明，Electron 会自动绑定快捷键（Cmd+C/V/X 等）。
-// 平台差异只体现在「应用菜单」和「窗口」菜单上，其余共用。
-function buildMenu() {
-  const template = [];
-
-  // 应用菜单（macOS 特有，靠近程序名字/关于/退出都在这里）
-  if (isMac) {
-    template.push({
-      label: APP_NAME,
-      submenu: [
-        { label: `关于 ${APP_NAME}`, role: 'about' },
-        { type: 'separator' },
-        { label: `隐藏 ${APP_NAME}`, role: 'hide' },
-        { label: '隐藏其他', role: 'hideOthers' },
-        { type: 'separator' },
-        { label: `退出 ${APP_NAME}`, role: 'quit' }
-      ]
-    });
-  } else {
-    // Windows/Linux 没有系统级应用菜单，退出按平台惯例放进「文件」
-    template.push({
-      label: '文件',
-      submenu: [{ label: '退出', role: 'quit' }]
-    });
-  }
-
-  // 编辑（必须有，Cmd+C/V/X、右键复制粘贴才生效）
-  template.push({
-    label: '编辑',
-    submenu: [
-      { label: '撤销', role: 'undo' },
-      { label: '重做', role: 'redo' },
-      { type: 'separator' },
-      { label: '剪切', role: 'cut' },
-      { label: '复制', role: 'copy' },
-      { label: '粘贴', role: 'paste' },
-      { label: '全选', role: 'selectAll' }
-    ]
-  });
-
-  // 视图
-  template.push({
-    label: '视图',
-    submenu: [
-      { label: '重新加载', role: 'reload' },
-      { label: '强制重新加载', role: 'forceReload' },
-      { label: '开发者工具', role: 'toggleDevTools' },
-      { type: 'separator' },
-      { label: '实际大小', role: 'resetZoom' },
-      { label: '放大', role: 'zoomIn' },
-      { label: '缩小', role: 'zoomOut' },
-      { type: 'separator' },
-      { label: '切换全屏', role: 'togglefullscreen' }
-    ]
-  });
-
-  // 窗口：macOS 的 zoom / front 角色仅在 macOS 生效，Windows 只保留最小化和关闭
-  template.push({
-    label: '窗口',
-    submenu: isMac
-      ? [
-          { label: '最小化', role: 'minimize' },
-          { label: '缩放', role: 'zoom' },
-          { label: '关闭', role: 'close' },
-          { type: 'separator' },
-          { label: '前置全部窗口', role: 'front' }
-        ]
-      : [
-          { label: '最小化', role: 'minimize' },
-          { label: '关闭', role: 'close' }
-        ]
-  });
-
-  return Menu.buildFromTemplate(template);
-}
-
 // 单实例锁：Windows 上再次打开程序时不另起窗口，而是聚焦已有窗口；
 // macOS 本身单实例，此锁同样生效且不破坏「点 Dock 重建唯一窗口」的行为。
 const gotTheLock = app.requestSingleInstanceLock();
@@ -273,9 +196,8 @@ if (!gotTheLock) {
   app.whenReady().then(() => {
     loadSettings();
     registerIpc();
-    // 所有平台统一使用中文菜单：macOS 显示在系统顶栏，
-    // Windows/Linux 默认由 autoHideMenuBar 收起，按 Alt 弹出。
-    Menu.setApplicationMenu(buildMenu());
+    // 不调用 Menu.setApplicationMenu：各平台都使用 Electron 默认菜单
+    //（macOS 显示在系统顶栏；Windows/Linux 由 autoHideMenuBar 收起，按 Alt 弹出）。
     createWindow();
 
     app.on('activate', () => {

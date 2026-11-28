@@ -20,7 +20,7 @@
 - **网络代理**：三档可选——不使用代理、跟随系统设置（默认）、自定义 HTTP / SOCKS5（支持用户名密码），配置持久化
 - **自定义 UA**：默认伪装成 Windows Chrome，改写本应用发出的所有请求头
 - **失败诊断**：播放列表按 2/4/8 秒退避重试，并区分「网络不可达」与「缺少 CORS 头」
-- **桌面体验**：单实例运行、外链交给系统浏览器、macOS 中文菜单
+- **桌面体验**：单实例运行、外链交给系统浏览器、使用 Electron 默认菜单
 
 ## 下载安装
 
@@ -86,7 +86,7 @@ npm run dist    # 打包当前平台的安装包（macOS 出 DMG，Windows 出 e
 ### 目录结构
 
 ```text
-├─ src/main/index.js       主进程：窗口、代理、UA、菜单、单实例锁
+├─ src/main/index.js       主进程：窗口、代理、UA、单实例锁
 ├─ src/preload/index.js    contextBridge 暴露 proxyApi / uaApi
 ├─ m3u8-player.html        渲染层页面（也是浏览器可用的完整界面）
 ├─ js/                     渲染层脚本
